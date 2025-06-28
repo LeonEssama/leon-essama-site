@@ -1,92 +1,117 @@
-
 <!DOCTYPE html>
-<html lang="en"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Essama Engineering Services</title>
-  <link rel="stylesheet" href="styles.css">
-</head><body>
-<nav class="navbar">
-  <a href="#">Home</a>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Essama Engineering | Power Systems Consulting</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #f9f9f9; color: #222; }
+    header {
+      background: url('hero-powerplant.jpg') center/cover no-repeat;
+      color: white; text-align: center;
+      padding: 120px 20px 100px;
+    }
+    nav { background-color: #002e4d; padding: 12px 20px; display: flex; justify-content: center; gap: 25px; }
+    nav a { color: white; text-decoration: none; font-weight: bold; }
+    section { max-width: 1100px; margin: auto; padding: 60px 20px; }
+    h2 { color: #003b5c; margin-bottom: 30px; text-align: center; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+    .card img { width: 100%; height: 180px; object-fit: cover; }
+    .card h3 { margin: 15px; }
+    .card p { margin: 0 15px 15px; }
+    iframe { width: 100%; height: 250px; border: none; border-radius: 8px; }
+    footer { background: #002e4d; color: white; text-align: center; padding: 30px; }
+  </style>
+</head>
+<body>
+<nav>
   <a href="#services">Services</a>
   <a href="#projects">Projects</a>
   <a href="#videos">Videos</a>
   <a href="#contact">Contact</a>
 </nav>
-
 <header>
   <h1>Essama Engineering</h1>
-  <p>Advanced Electrical Consulting & Engineering Services Worldwide</p>
+  <p>Expertise in Electrical Systems Design, Simulation & Field Commissioning</p>
 </header>
-
 <section id="services">
-  <h2>Expert Services</h2>
-  <div class="services">
-    <div class="service-card">
-      <h3>System Design</h3>
-      <p>SFC, LCI, AVR integration and HV electrical planning for industrial and power plants.</p>
+  <h2>Our Expertise</h2>
+  <div class="grid">
+    <div class="card">
+      <img src="sfc_drive_system.jpg" alt="SFC Drive System">
+      <h3>SFC & LCI Drive Systems</h3>
+      <p>Commissioning and testing of SFC/LCI for hydro & thermal plants.</p>
     </div>
-    <div class="service-card">
-      <h3>Field Diagnostics</h3>
-      <p>Vibration, Elcid, Hipot, PD testing and dynamic condition assessment on motors and generators.</p>
+    <div class="card">
+      <img src="vibration_analysis.jpg" alt="Vibration Analysis">
+      <h3>Dynamic Vibration Diagnostics</h3>
+      <p>Using ADRE 408 and CSI 2140 to detect unbalance, misalignment, and resonance issues.</p>
     </div>
-    <div class="service-card">
-      <h3>Simulation & Compliance</h3>
-      <p>CFD, PSS®, PowerFactory modeling and grid code simulations for CAPEX/OPEX optimization.</p>
+    <div class="card">
+      <img src="high_voltage_testing.jpg" alt="HV Testing">
+      <h3>High Voltage Testing</h3>
+      <p>Field execution of Elcid, Hipot, Surge, and Partial Discharge measurements.</p>
+    </div>
+    <div class="card">
+      <img src="simulation_study.jpg" alt="Simulation">
+      <h3>Simulation & Grid Compliance</h3>
+      <p>Load flow, fault analysis, transient simulations using DIgSILENT & PSS®E.</p>
+    </div>
+    <div class="card">
+      <img src="preventive_maintenance.jpg" alt="Maintenance">
+      <h3>Preventive Maintenance</h3>
+      <p>Predictive diagnostics for generators, transformers & motors in industrial plants.</p>
+    </div>
+    <div class="card">
+      <img src="engineering_consulting.jpg" alt="Consulting">
+      <h3>Engineering Consulting</h3>
+      <p>CAPEX project planning, technical documentation, and design validation.</p>
     </div>
   </div>
 </section>
-
 <section id="projects">
-  <h2>Project Highlights</h2>
-  <div class="gallery">
-    <img src="images/Jebba Commissioning.jpg" alt="Jebba Nigeria">
-    <img src="images/Barrick LCI commissioning.jpg" alt="Barrick LCI">
-    <img src="images/Claus GT plant Netherlands.jpg" alt="Claus GT Netherlands">
+  <h2>Highlighted Projects</h2>
+  <div class="grid">
+    <div class="card">
+      <img src="jebba_nigeria.jpg" alt="Jebba Nigeria">
+      <h3>Jebba Hydro – Nigeria</h3>
+      <p>Commissioned LCI system and excitation cabinet under high-pressure schedule.</p>
+    </div>
+    <div class="card">
+      <img src="senoko_singapore.jpg" alt="Senoko Power Station">
+      <h3>Senoko – Singapore</h3>
+      <p>Rotating machine testing and real-time vibration diagnostics on generators.</p>
+    </div>
+    <div class="card">
+      <img src="pueblo_barrick.jpg" alt="Barrick Pueblo Viejo">
+      <h3>Pueblo Viejo – Barrick Gold</h3>
+      <p>High voltage testing and PD analysis on mining plant electrical network.</p>
+    </div>
   </div>
 </section>
-
 <section id="videos">
-  <h2>On-Site Experience</h2>
-  <p>Below are sample videos related to HV commissioning and rotating equipment diagnostics.</p>
-  <div class="gallery">
-    <iframe width="360" height="215" src="https://www.youtube.com/embed/tQf2a93XkIA" title="SFC Commissioning" allowfullscreen></iframe>
-    <iframe width="360" height="215" src="https://www.youtube.com/embed/kEM1SuvKZaI" title="PD Testing Example" allowfullscreen></iframe>
+  <h2>Watch Our Expertise</h2>
+  <div class="grid">
+    <iframe src="https://www.youtube.com/embed/tQf2a93XkIA" title="SFC Commissioning Example"></iframe>
+    <iframe src="https://www.youtube.com/embed/kEM1SuvKZaI" title="Vibration Monitoring Demo"></iframe>
+    <iframe src="https://www.youtube.com/embed/R-N4gI9Pmxk" title="HV Testing Field Setup"></iframe>
   </div>
 </section>
-
-
-<section id="testimonials">
-  <h2>What Clients Say</h2>
-  <div class="services">
-    <div class="service-card">
-      <p>“Leon demonstrated exceptional technical expertise during our SFC and excitation commissioning. His proactive approach helped us avoid delays and complete testing under tight deadlines.”</p>
-      <strong>— Operations Manager, AFAM Gas Plant (Nigeria)</strong>
-    </div>
-    <div class="service-card">
-      <p>“Thanks to Leon’s deep diagnostic knowledge in PD and vibration analysis, we detected early-stage failure in our critical generator. His reports were clear, actionable, and audit-ready.”</p>
-      <strong>— Maintenance Lead, Pueblo Viejo Barrick Gold</strong>
-    </div>
-    <div class="service-card">
-      <p>“Leon’s simulation study using PSS®E and DIgSILENT was key to achieving grid code compliance for our new hydro turbine system. His precision saved weeks of back-and-forth with the TSO.”</p>
-      <strong>— R&D Director, European OEM</strong>
-    </div>
-  </div>
-</section>
-
 <section id="contact">
-  <h2>Contact & Quote Request</h2>
-  <p>Email: <a href="mailto:Leon.Essama@outlook.com">Leon.Essama@outlook.com</a><br>
-  Phone: +41 79 553 4548</p>
+  <h2>Contact & Request a Quote</h2>
   <form action="mailto:Leon.Essama@outlook.com" method="post" enctype="text/plain">
-    Name:<br><input type="text" name="name"><br>
-    Email:<br><input type="email" name="email"><br>
-    Message:<br><textarea name="message" rows="4" cols="50"></textarea><br>
-    <input type="submit" value="Send Message">
+    <p>Name:<br><input type="text" name="name" required></p>
+    <p>Email:<br><input type="email" name="email" required></p>
+    <p>Message:<br><textarea name="message" rows="5" required></textarea></p>
+    <p><button type="submit">Send Message</button></p>
   </form>
 </section>
-
 <footer>
-  <p>&copy; 2025 Essama Engineering | Built for Performance & Precision</p>
+  <p>&copy; 2025 Essama Engineering | Advanced Electrical Services Worldwide</p>
 </footer>
-
-</body></html>
+</body>
+</html>
