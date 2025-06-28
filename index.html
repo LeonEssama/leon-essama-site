@@ -1,8 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Essama Engineering Home</title>
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.0/gsap.min.js"></script>
+</head><body>
+<nav class="navbar">
+  <a href="index.html">Home</a>
+  <a href="about.html">About</a>
+  <a href="services.html">Services</a>
+  <a href="projects.html">Projects</a>
+  <a href="contact.html">Contact</a>
+</nav>
 
-    <html><head><title>Leon Essama - Home</title></head>
-    <body>
-        <h1>Welcome to Essama Engineering</h1>
-        <p>Electrical System Design, Simulation & Expert Field Service Engineer</p>
-        <nav><a href="about.html">About</a> | <a href="services.html">Services</a> | <a href="projects.html">Projects</a> | <a href="contact.html">Contact</a></nav>
-    </body></html>
-    
+<header class="fade-in">
+  <h1>Welcome to Essama Engineering</h1>
+  <p>Electrical System Design, Simulation & Expert Field Services</p>
+</header>
+<section class="hero fade-in">
+  <img class="section-image" src="A_digital_photograph_with_text_overlay_welcomes_vi.png" alt="Engineering Welcome" />
+</section>
+<footer><p>&copy; 2025 Leon Essama | Essama Engineering | All Rights Reserved</p></footer>
+<script>document.querySelectorAll('.fade-in').forEach((el, i) => {
+  gsap.from(el, { opacity: 0, y: 30, duration: 1, delay: i * 0.3 });
+});</script></body></html>

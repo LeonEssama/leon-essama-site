@@ -1,16 +1,34 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contact</title>
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.0/gsap.min.js"></script>
+</head><body>
+<nav class="navbar">
+  <a href="index.html">Home</a>
+  <a href="about.html">About</a>
+  <a href="services.html">Services</a>
+  <a href="projects.html">Projects</a>
+  <a href="contact.html">Contact</a>
+</nav>
 
-    <html><head><title>Contact</title></head>
-    <body>
-        <h1>Contact Me</h1>
-        <p>Email: <a href="mailto:Leon.Essama@outlook.com">Leon.Essama@outlook.com</a><br>
-        Phone: +41 79 553 4548<br>
-        Location: Ufhusen, Switzerland</p>
-        <h2>Request a Consultation</h2>
-        <form action="mailto:Leon.Essama@outlook.com" method="post" enctype="text/plain">
-            Name:<br><input type="text" name="name"><br>
-            Email:<br><input type="email" name="email"><br>
-            Message:<br><textarea name="message" rows="4" cols="30"></textarea><br>
-            <input type="submit" value="Send Request">
-        </form>
-    </body></html>
-    
+<section class="fade-in">
+  <div class="content">
+    <h2>Contact & Consultation</h2>
+    <img class="section-image" src="contact_team.jpg" alt="Contact">
+    <p>Email: <a href="mailto:Leon.Essama@outlook.com">Leon.Essama@outlook.com</a><br>
+    Phone: +41 79 553 4548<br>
+    Location: Ufhusen, Switzerland</p>
+    <form action="mailto:Leon.Essama@outlook.com" method="post" enctype="text/plain">
+      <label>Name:<br><input type="text" name="name"></label><br>
+      <label>Email:<br><input type="email" name="email"></label><br>
+      <label>Message:<br><textarea name="message" rows="4" cols="50"></textarea></label><br>
+      <input type="submit" value="Send Message">
+    </form>
+  </div>
+</section>
+<footer><p>&copy; 2025 Leon Essama | Essama Engineering | All Rights Reserved</p></footer>
+<script>document.querySelectorAll('.fade-in').forEach((el, i) => {
+  gsap.from(el, { opacity: 0, y: 30, duration: 1, delay: i * 0.3 });
+});</script></body></html>

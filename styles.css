@@ -1,0 +1,7 @@
+body { margin: 0; font-family: Arial, sans-serif; background: #f4f4f4; color: #333; }
+.navbar { background: #003b5c; padding: 10px; text-align: center; }
+.navbar a { color: white; margin: 0 15px; text-decoration: none; font-weight: bold; }
+header, section { padding: 60px 20px; text-align: center; }
+footer { text-align: center; padding: 30px; background-color: #003b5c; color: white; }
+.section-image { width: 100%; max-width: 800px; margin: 20px auto; display: block; }
+.content { max-width: 900px; margin: auto; text-align: left; }
