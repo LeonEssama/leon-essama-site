@@ -1,26 +1,73 @@
+
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Essama Engineering Home</title>
-<link rel="stylesheet" href="styles.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.0/gsap.min.js"></script>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Essama Engineering Services</title>
+  <link rel="stylesheet" href="styles.css">
 </head><body>
 <nav class="navbar">
-  <a href="index.html">Home</a>
-  <a href="about.html">About</a>
-  <a href="services.html">Services</a>
-  <a href="projects.html">Projects</a>
-  <a href="contact.html">Contact</a>
+  <a href="#">Home</a>
+  <a href="#services">Services</a>
+  <a href="#projects">Projects</a>
+  <a href="#videos">Videos</a>
+  <a href="#contact">Contact</a>
 </nav>
 
-<header class="fade-in">
-  <h1>Welcome to Essama Engineering</h1>
-  <p>Electrical System Design, Simulation & Expert Field Services</p>
+<header>
+  <h1>Essama Engineering</h1>
+  <p>Advanced Electrical Consulting & Engineering Services Worldwide</p>
 </header>
-<section class="hero fade-in">
-  <img class="section-image" src="A_digital_photograph_with_text_overlay_welcomes_vi.png" alt="Engineering Welcome" />
+
+<section id="services">
+  <h2>Expert Services</h2>
+  <div class="services">
+    <div class="service-card">
+      <h3>System Design</h3>
+      <p>SFC, LCI, AVR integration and HV electrical planning for industrial and power plants.</p>
+    </div>
+    <div class="service-card">
+      <h3>Field Diagnostics</h3>
+      <p>Vibration, Elcid, Hipot, PD testing and dynamic condition assessment on motors and generators.</p>
+    </div>
+    <div class="service-card">
+      <h3>Simulation & Compliance</h3>
+      <p>CFD, PSS®, PowerFactory modeling and grid code simulations for CAPEX/OPEX optimization.</p>
+    </div>
+  </div>
 </section>
-<footer><p>&copy; 2025 Leon Essama | Essama Engineering | All Rights Reserved</p></footer>
-<script>document.querySelectorAll('.fade-in').forEach((el, i) => {
-  gsap.from(el, { opacity: 0, y: 30, duration: 1, delay: i * 0.3 });
-});</script></body></html>
+
+<section id="projects">
+  <h2>Project Highlights</h2>
+  <div class="gallery">
+    <img src="images/Jebba Commissioning.jpg" alt="Jebba Nigeria">
+    <img src="images/Barrick LCI commissioning.jpg" alt="Barrick LCI">
+    <img src="images/Claus GT plant Netherlands.jpg" alt="Claus GT Netherlands">
+  </div>
+</section>
+
+<section id="videos">
+  <h2>On-Site Experience</h2>
+  <p>Below are sample videos related to HV commissioning and rotating equipment diagnostics.</p>
+  <div class="gallery">
+    <iframe width="360" height="215" src="https://www.youtube.com/embed/tQf2a93XkIA" title="SFC Commissioning" allowfullscreen></iframe>
+    <iframe width="360" height="215" src="https://www.youtube.com/embed/kEM1SuvKZaI" title="PD Testing Example" allowfullscreen></iframe>
+  </div>
+</section>
+
+<section id="contact">
+  <h2>Contact & Quote Request</h2>
+  <p>Email: <a href="mailto:Leon.Essama@outlook.com">Leon.Essama@outlook.com</a><br>
+  Phone: +41 79 553 4548</p>
+  <form action="mailto:Leon.Essama@outlook.com" method="post" enctype="text/plain">
+    Name:<br><input type="text" name="name"><br>
+    Email:<br><input type="email" name="email"><br>
+    Message:<br><textarea name="message" rows="4" cols="50"></textarea><br>
+    <input type="submit" value="Send Message">
+  </form>
+</section>
+
+<footer>
+  <p>&copy; 2025 Essama Engineering | Built for Performance & Precision</p>
+</footer>
+
+</body></html>
