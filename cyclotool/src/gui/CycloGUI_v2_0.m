@@ -1,6 +1,6 @@
 function CycloGUI_v2_0()
-rootFolder = fileparts(mfilename('fullpath'));
-addpath(genpath(rootFolder));
+srcFolder = fileparts(fileparts(mfilename('fullpath')));
+addpath(genpath(srcFolder));
 DB = ThyristorDatabase();
 OVDB = OV_ThyristorDatabase();
 BusbarUI = [];
