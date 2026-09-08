@@ -1,0 +1,79 @@
+function Result = cyclo_attach_case_metadata( ...
+        Result, ...
+        Input, ...
+        calculationModule, ...
+        toolVersion)
+%CYCLO_ATTACH_CASE_METADATA Add traceability to a calculation result.
+%
+% Result = cyclo_attach_case_metadata( ...
+%     Result, Input, calculationModule, toolVersion)
+
+arguments
+
+    Result (1,1) struct
+    Input (1,1) struct
+    calculationModule (1,1) string
+    toolVersion (1,1) string = "1.2 Development"
+
+end
+
+assert( ...
+    strlength(strtrim(calculationModule)) > 0, ...
+    'calculationModule must not be empty.');
+
+assert( ...
+    strlength(strtrim(toolVersion)) > 0, ...
+    'toolVersion must not be empty.');
+
+caseSignature = ...
+    cyclo_case_signature(Input);
+
+Result.Metadata = ...
+    struct();
+
+Result.Metadata.CaseID = ...
+    caseSignature.ID;
+
+Result.Metadata.InputHash = ...
+    caseSignature.FullHash;
+
+Result.Metadata.HashAlgorithm = ...
+    caseSignature.Algorithm;
+
+Result.Metadata.Module = ...
+    calculationModule;
+
+Result.Metadata.ToolVersion = ...
+    toolVersion;
+
+Result.Metadata.CalculatedAt = ...
+    datetime( ...
+        'now', ...
+        'Format', ...
+        'yyyy-MM-dd HH:mm:ss');
+
+if isfield(Input, 'CaseName')
+
+    Result.Metadata.CaseName = ...
+        string(Input.CaseName);
+
+else
+
+    Result.Metadata.CaseName = ...
+        "";
+
+end
+
+if isfield(Input, 'PulseNumber')
+
+    Result.Metadata.PulseNumber = ...
+        Input.PulseNumber;
+
+else
+
+    Result.Metadata.PulseNumber = ...
+        NaN;
+
+end
+
+end

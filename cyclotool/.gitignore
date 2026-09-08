@@ -1,0 +1,18 @@
+# MATLAB
+*.asv
+*.mex*
+slprj/
+codegen/
+*.autosave
+octave-workspace
+
+# Generated/output artifacts -- regenerate, don't version
+*.png
+*.pdf
+!docs/**/*.pdf
+CycloToolDesignDataCache.mat
+*_Debug.mat
+
+# OS
+.DS_Store
+Thumbs.db
