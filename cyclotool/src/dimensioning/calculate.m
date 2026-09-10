@@ -24,11 +24,15 @@ function R = calculate(Input)
 %       loop below.
 %     - Reformats the arithmetic for readability; no formula changed.
 %     - Resolves R.Ls_used / R.Ls_source: either Input.Ls as supplied
-%       (manual entry) or, when Input.LsMode is 'Estimate
-%       (Salient-Pole)', a nameplate-based engineering estimate via
-%       estimate_salient_pole_Ls.m. Ls itself is not consumed by any
-%       formula in this function -- this only makes a single,
-%       traceable value available to downstream consumers.
+%       (manual entry); when Input.LsMode is 'Estimate (Salient-Pole)',
+%       a nameplate-based estimate via estimate_salient_pole_Ls.m
+%       (assumed scalar Xd''); or, when Input.LsMode is 'Estimate
+%       (Equivalent Circuit)', a datasheet-derived estimate via
+%       estimate_ls_from_equivalent_circuit.m (manufacturer d-axis
+%       equivalent-circuit reactances, damperless reduction). Ls itself
+%       is not consumed by any formula in this function -- this only
+%       makes a single, traceable value available to downstream
+%       consumers.
 
 %% ==========================================================
 % INPUTS
@@ -93,6 +97,29 @@ if isfield(Input,'LsMode') && ...
         UM, IM, Input.n_nom, Input.PolePairs, Input.Xdpp_pu);
     R.Ls_source = 'Estimated (salient-pole, Xdpp assumption)';
 
+elseif isfield(Input,'LsMode') && ...
+        strcmpi(Input.LsMode,'Estimate (Equivalent Circuit)')
+
+    requiredFields = {'xaDelta_pu','xad_pu','xfc_pu'};
+    for k = 1:numel(requiredFields)
+        if ~isfield(Input,requiredFields{k}) || isempty(Input.(requiredFields{k})) ...
+                || isnan(Input.(requiredFields{k}))
+            error('calculate:MissingEquivalentCircuitData', ...
+                ['Input.LsMode requests the equivalent-circuit Ls estimate ', ...
+                'but Input.%s was not supplied.'], requiredFields{k});
+        end
+    end
+    if ~isfield(Input,'n_nom') || ~isfield(Input,'PolePairs')
+        error('calculate:MissingMotorSpeedData', ...
+            ['Input.LsMode requests the equivalent-circuit Ls estimate but ', ...
+            'Input.n_nom and/or Input.PolePairs was not supplied.']);
+    end
+
+    [R.Ls_used, R.Ls_info] = estimate_ls_from_equivalent_circuit( ...
+        UM, IM, Input.n_nom, Input.PolePairs, ...
+        Input.xaDelta_pu, Input.xad_pu, Input.xfc_pu);
+    R.Ls_source = 'Estimated (d-axis equivalent circuit, damperless reduction)';
+
 elseif isfield(Input,'Ls') && ~isempty(Input.Ls) && ~isnan(Input.Ls) && ...
         Input.Ls > 0
 
@@ -102,8 +129,9 @@ elseif isfield(Input,'Ls') && ~isempty(Input.Ls) && ~isnan(Input.Ls) && ...
 else
     error('calculate:MissingLs', ...
         ['Input.Ls was not supplied and Input.LsMode does not request ', ...
-        'the salient-pole estimate. Provide a stator inductance value ', ...
-        'or switch the Motor tab Ls Source to Estimate (Salient-Pole).']);
+        'an estimate. Provide a stator inductance value or switch the ', ...
+        'Motor tab Ls Source to Estimate (Salient-Pole) or Estimate ', ...
+        '(Equivalent Circuit).']);
 end
 
 %% ==========================================================
