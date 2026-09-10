@@ -12,14 +12,9 @@ function E = excitation_calculation(Input)
 %   The DCS880 / arrester lookups have been vectorized (same "first
 %   match" selection logic, no loop).
 %
-%   Required voltage formula: per ABB TN 95/679 Auslegungsblatt (p.17),
-%   the numerator factor depends on drive type -- 1.15 for a Rohrmuehle
-%   (tube mill, Hochlauf case), or 2 for "Andere Antriebe" (other
-%   drives: rolling mill, hoist/conveyor), which the source document
-%   identifies as the case needing the largest voltage reserve. Only
-%   the Rohrmuehle factor was implemented previously; Input.DriveType
-%   now selects between them (defaults to Rohrmuehle if not supplied,
-%   preserving prior behavior).
+%   Calculation logic is unchanged from the original; the DCS880 /
+%   arrester lookups have been vectorized (same "first match" selection
+%   logic, no loop).
 
 if Input.If_nom == 0
     error('excitation_calculation:ZeroIfNom', 'Input.If_nom must be nonzero.');
@@ -30,13 +25,7 @@ E = struct();
 %% Required excitation voltage (Excel formula)
 iD = Input.If_max / Input.If_nom;
 x = 1 - Input.VoltageVariation/100;
-if isfield(Input,'DriveType') && ...
-        strcmpi(Input.DriveType,'Other (Walzwerk/Foerderantrieb)')
-    excFactor = 2;
-else
-    excFactor = 1.15;
-end
-E.UV0_calc = excFactor * Input.Uf_max / (1.35 * (x*cosd(10) - 0.05*iD));
+E.UV0_calc = 1.15 * Input.Uf_max / (1.35 * (x*cosd(10) - 0.05*iD));
 
 %% Standard excitation voltage class (first class >= required)
 VClass = ExcitationVoltageClasses();
