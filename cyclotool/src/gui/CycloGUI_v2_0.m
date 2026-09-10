@@ -18,8 +18,11 @@ NetzBetriebsartResults = {};
 NetzBelastungResults  = {};
 NetzSummaryResults = {};
 GridHarmonicObjects = {};
+GridResultAll = {};
+GridCaseRowMap = [];
 LossObjects = {};
 LossResults = {};
+LossRowMap = [];
 CharacteristicObjects = {};
 FiringAngleObjects = {};
 ExcitationObjects = {};
@@ -913,6 +916,16 @@ uibutton(...
     'Text','Calculate Losses',...
     'Position',[10 5 180 25],...
     'ButtonPushedFcn',@runLosses);
+uilabel(lossToolbar,...
+    'Text','SC Case',...
+    'Position',[210 5 65 25]);
+lossViewSCDropdown = uidropdown(...
+    lossToolbar,...
+    'Items',{'SCmin','SCmax'},...
+    'Value','SCmin',...
+    'Position',[280 5 100 25]);
+lossViewSCDropdown.ValueChangedFcn = ...
+    @updateLossView;
 tabSidebands = uitab(tg,...
     'Title','Sidebands');
 tabSpectrum = uitab(tg,...
@@ -1072,6 +1085,16 @@ harmonicCaseDropdown = uidropdown(...
     'Position',[700 820 180 22]);
 harmonicCaseDropdown.ValueChangedFcn = ...
     @harmonicCaseChanged;
+uilabel(tabConverterHarmonics,...
+    'Text','SC Case',...
+    'Position',[20 820 70 22]);
+harmonicViewSCDropdown = uidropdown(...
+    tabConverterHarmonics,...
+    'Items',{'SCmin','SCmax'},...
+    'Value','SCmin',...
+    'Position',[90 820 100 22]);
+harmonicViewSCDropdown.ValueChangedFcn = ...
+    @(~,~) showHarmonicStudyForCase(harmonicViewSCDropdown.Value);
 converterHarmonicAx = uiaxes(tabConverterHarmonics);
 converterHarmonicAx.Units = 'pixels';
 converterHarmonicAx.Position = [900 250 500 550];
@@ -1103,17 +1126,28 @@ netzMatrixTable = uitable(...
     true  ... deltaBeta
     false ... SCCase
     ]);
+netzViewSCDropdown = uidropdown(...
+    netzToolbar,...
+    'Items',{'SCmin','SCmax'},...
+    'Value','SCmin',...
+    'Position',[570 5 110 25]);
+netzViewSCDropdown.ValueChangedFcn = ...
+    @updateNetzResultView;
+netzViewSCDropdown.Tooltip = [ ...
+    'Which SC case''s results to display in the tables below. If the ', ...
+    'selected case has not been computed yet (Netzbelastung has not ', ...
+    'been run with it present), shows a reminder instead.'];
 netzViewDropdown = uidropdown(...
     netzToolbar,...
     'Items',{'Betriebsart','Netzbelastung'},...
     'Value','Betriebsart',...
-    'Position',[570 5 180 25]);
+    'Position',[690 5 160 25]);
 netzViewDropdown.ValueChangedFcn = ...
     @updateNetzResultView;
 netzStatus = uilabel(...
     netzToolbar,...
     'Text','Ready',...
-    'Position',[760 5 200 25]);
+    'Position',[860 5 200 25]);
 netzResultTable = uitable(...
     tabNetz,...
     'Units','normalized',...
@@ -1155,6 +1189,16 @@ gridCaseDropdown = uidropdown(...
     'Items',{'No Data'});
 gridCaseDropdown.ValueChangedFcn = ...
     @updateGridHarmonicDetail;
+uilabel(gridToolbar,...
+    'Text','SC Case',...
+    'Position',[510 5 65 25]);
+gridViewSCDropdown = uidropdown(...
+    gridToolbar,...
+    'Items',{'SCmin','SCmax'},...
+    'Value','SCmin',...
+    'Position',[580 5 100 25]);
+gridViewSCDropdown.ValueChangedFcn = ...
+    @updateGridHarmonicView;
 gridHarmonicDetailTable = uitable(...
     tabGridHarmonics,...
     'Units','normalized',...
@@ -1176,7 +1220,8 @@ lossTable = uitable(...
     'TransformerLoss [W]',...
     'ConverterLoss [W]',...
     'TotalLoss [W]',...
-    'Pin [W]'});
+    'Pin [W]',...
+    'SCCase'});
 lossTable.Units = 'normalized';
 lossTable.Position = [0.01 0.48 0.98 0.44];
 lossDetailTable = uitable(...
@@ -1211,6 +1256,16 @@ sidebandCaseDropdown = uidropdown(...
     tabSidebands,...
     'Position',[20 920 250 22],...
     'Items',{'No Data'});
+uilabel(tabSidebands,...
+    'Text','SC Case',...
+    'Position',[290 920 65 22]);
+sidebandViewSCDropdown = uidropdown(...
+    tabSidebands,...
+    'Items',{'SCmin','SCmax'},...
+    'Value','SCmin',...
+    'Position',[360 920 100 22]);
+sidebandViewSCDropdown.ValueChangedFcn = ...
+    @sidebandViewSCChanged;
 
 sidebandCaseDropdown.ValueChangedFcn = ...
     @updateSidebandDetail;
@@ -1809,6 +1864,15 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         D = DimensioningObjects{row};
         populateDimensioningResults(D);
         populateDimensioningDetail(D.Result);
+    end
+    function alertCaseNotCalculated(caseName)
+        %ALERTCASENOTCALCULATED  Shared "not computed yet" message for
+        %every SC Case view selector (Converter Harmonics, Netzbelastung,
+        %Grid Harmonics, Losses, Sidebands): the user picked SCmin/SCmax
+        %in a view dropdown but that case hasn't been run yet.
+        uialert(fig, ...
+            sprintf('Calculate %s case first.', caseName), ...
+            'No Data');
     end
     function v = getResultField(S, name, default)
         %GETRESULTFIELD  S.(name) if present, else default -- lets a
@@ -2566,9 +2630,30 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         end
         converterHarmonicHistoryTable.Data = data;
         if ~isempty(HarmonicObjects)
-            showHarmonicStudy( ...
-                numel(HarmonicObjects));
+            % Show the case just computed -- keeps the SC Case dropdown
+            % in sync with what a fresh "Calculate Harmonics" run added.
+            harmonicViewSCDropdown.Value = HarmonicObjects{end}.Case;
+            showHarmonicStudyForCase(harmonicViewSCDropdown.Value);
         end
+    end
+    function showHarmonicStudyForCase(caseName)
+        %SHOWHARMONICSTUDYFORCASE  Show the latest HarmonicObjects entry
+        %matching caseName ('SCmin'/'SCmax'); if none exists yet, clear
+        %the display and prompt the user to compute it first.
+        idx = 0;
+        for k = numel(HarmonicObjects):-1:1
+            if strcmp(HarmonicObjects{k}.Case, caseName)
+                idx = k;
+                break
+            end
+        end
+        if idx == 0
+            cla(converterHarmonicAx);
+            converterHarmonicDetailTable.Data = {};
+            alertCaseNotCalculated(caseName);
+            return
+        end
+        showHarmonicStudy(idx);
     end
     function showHarmonicStudy(idx)
         if idx > numel(HarmonicObjects)
@@ -2634,7 +2719,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         if isempty(HarmonicObjects)
             return
         end
-        showHarmonicStudy(numel(HarmonicObjects));
+        showHarmonicStudyForCase(harmonicViewSCDropdown.Value);
     end
     function selectHarmonicStudy(~,event)
         if isempty(event.Indices)
@@ -2659,6 +2744,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             case 5
                 harmonicCaseDropdown.Value = 'Peak 1.0';
         end
+        harmonicViewSCDropdown.Value = HarmonicObjects{StudyIndex}.Case;
         showHarmonicStudy(StudyIndex);
     end
     function runCharacteristic(~,~)
@@ -3025,20 +3111,6 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             end
         end
         NetzSummaryResults = Summary;
-        WorstDeltaT = max(cell2mat(BelastungResult(:,3)));
-        WorstIL1 = max(cell2mat(BelastungResult(:,7)));
-        WorstQavg = max(cell2mat(BelastungResult(:,5)));
-        WorstCosPhi = min(cell2mat(BelastungResult(:,8)));
-        netzKPITable.ColumnName = {...
-            'Worst ΔT/T',...
-            'Worst IL1 [A]',...
-            'Worst Qavg [MVAr]',...
-            'Worst cosphiL'};
-        netzKPITable.Data = { ...
-            WorstDeltaT,...
-            WorstIL1,...
-            WorstQavg/1e6,...
-            WorstCosPhi};
         netzSummaryTable.ColumnName = {
             'Point'
             'SCCase'
@@ -3048,11 +3120,20 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'Max IL1 [A]'
             'Avg cosphiL'
             };
-        netzSummaryTable.Data = NetzSummaryResults;
+        netzKPITable.ColumnName = {...
+            'Worst ΔT/T',...
+            'Worst IL1 [A]',...
+            'Worst Qavg [MVAr]',...
+            'Worst cosphiL'};
         netzStatus.Text = 'Calculation Complete';
+        % Default the view to whichever case this run's base (row 1) is
+        % -- keeps the SC Case dropdown in sync with what was just run,
+        % same as the Converter Harmonics tab.
+        netzViewSCDropdown.Value = BelastungResult{1,9};
         updateNetzResultView();
     end
     function updateNetzResultView(~,~)
+        caseName = netzViewSCDropdown.Value;
         switch netzViewDropdown.Value
             case 'Betriebsart'
                 netzResultTable.ColumnName = {
@@ -3064,10 +3145,9 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     'Udvirt'
                     'SCCase'
                     };
-                netzResultTable.Data = ...
-                    NetzBetriebsartResults;
+                FullResults = NetzBetriebsartResults;
+                caseCol = 7;
             case 'Netzbelastung'
-
                 netzResultTable.ColumnName = {
                     'Point'
                     'VoltageCase'
@@ -3079,9 +3159,40 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     'cosphiL'
                     'SCCase'
                     };
-
-                netzResultTable.Data = ...
-                    NetzBelastungResults;
+                FullResults = NetzBelastungResults;
+                caseCol = 9;
+        end
+        if isempty(FullResults)
+            % Nothing computed at all yet -- Run Netzbelastung first,
+            % same as before this SC Case selector existed.
+            netzResultTable.Data = {};
+            netzSummaryTable.Data = {};
+            netzKPITable.Data = {};
+            return
+        end
+        rows = strcmp(FullResults(:,caseCol), caseName);
+        if ~any(rows)
+            netzResultTable.Data = {};
+            netzSummaryTable.Data = {};
+            netzKPITable.Data = {};
+            alertCaseNotCalculated(caseName);
+            return
+        end
+        netzResultTable.Data = FullResults(rows,:);
+        if ~isempty(NetzSummaryResults)
+            netzSummaryTable.Data = ...
+                NetzSummaryResults(strcmp(NetzSummaryResults(:,2),caseName),:);
+        end
+        if ~isempty(NetzBelastungResults)
+            kpiRows = strcmp(NetzBelastungResults(:,9), caseName);
+            if any(kpiRows)
+                B = NetzBelastungResults(kpiRows,:);
+                netzKPITable.Data = { ...
+                    max(cell2mat(B(:,3))), ...
+                    max(cell2mat(B(:,7))), ...
+                    max(cell2mat(B(:,5)))/1e6, ...
+                    min(cell2mat(B(:,8)))};
+            end
         end
     end
     function runGridHarmonics(~,~)
@@ -3112,7 +3223,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % Reset storage
         GridHarmonicObjects = {};
         % Summary table
-        GridResult = cell(size(Data,1),12);
+        GridResult = cell(size(Data,1),13);
         DimObj    = DimensioningObjects{end};
         DimInput  = DimObj.Input;
         DimResult = DimObj.Result;
@@ -3121,6 +3232,15 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             VoltageCase = Data{r,2};
             IL1     = Data{r,7};
             cosphiL = Data{r,8};
+            SCCase  = Data{r,9};
+            % This row's actual grid short-circuit power -- ku (grid
+            % voltage distortion) must use whichever SC value this row
+            % was computed against (SCmin or SCmax), not always SC_min.
+            if strcmp(SCCase,'SCmax')
+                SCactive = DimInput.SC_max;
+            else
+                SCactive = DimInput.SC_min;
+            end
             % =====================================================
             % ABB aN
             % =====================================================
@@ -3172,7 +3292,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     *100;
                 IL = KI/100 * IL1;
                 S = sqrt(3) * DimResult.Uv0N * IL1;
-                ku = KI * n * S / DimInput.SC_min;
+                ku = KI * n * S / SCactive;
                 H(k,:) = [ ...
                     n ...
                     KI ...
@@ -3186,6 +3306,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             GH = struct();
             GH.Point = Point;
             GH.VoltageCase = VoltageCase;
+            GH.SCCase = SCCase;
             GH.IL1 = IL1;
             GH.aN  = aN;
             GH.u   = u;
@@ -3323,6 +3444,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 H(3,3)
                 H(4,2)
                 H(4,3)
+                SCCase
                 };
         end
         % =========================================================
@@ -3341,49 +3463,69 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'H11 [A]'
             'H13 [%]'
             'H13 [A]'
+            'SCCase'
             };
-        gridHarmonicTable.Data = GridResult;
-        % =========================================================
-        % Detail dropdown
-        % =========================================================
-        CaseNames = cell(size(Data,1),1);
-        for r = 1:size(Data,1)
-            CaseNames{r} = sprintf('%s - %s', ...
-                Data{r,1}, ...
-                Data{r,2});
+        GridResultAll = GridResult;
+        % Default the view to whichever case this run's base (row 1) is
+        % -- keeps the SC Case dropdown in sync with what was just run.
+        gridViewSCDropdown.Value = GridResult{1,13};
+        updateGridHarmonicView();
+        ABBReportData = buildABBReportData();
+    end
+    function sidebandViewSCChanged(~,~)
+        % The Sidebands tab's SC Case selector mirrors the Grid
+        % Harmonics tab's -- both views share the same underlying
+        % GridHarmonicObjects case filter, so keep them in lockstep
+        % regardless of which tab the user changes it from.
+        gridViewSCDropdown.Value = sidebandViewSCDropdown.Value;
+        updateGridHarmonicView();
+    end
+    function updateGridHarmonicView(~,~)
+        %UPDATEGRIDHARMONICVIEW  Filter the Grid Harmonics summary table
+        %and the (shared) detail/sideband case dropdowns down to just
+        %the selected SC Case; alert if that case hasn't been computed.
+        caseName = gridViewSCDropdown.Value;
+        sidebandViewSCDropdown.Value = caseName;
+        if isempty(GridResultAll)
+            gridHarmonicTable.Data = {};
+            GridCaseRowMap = [];
+            setDropdownItemsSafely(gridCaseDropdown, {}, 'No Data');
+            setDropdownItemsSafely(sidebandCaseDropdown, {}, 'No Data');
+            return
+        end
+        rows = strcmp(GridResultAll(:,13), caseName);
+        if ~any(rows)
+            gridHarmonicTable.Data = {};
+            GridCaseRowMap = [];
+            gridHarmonicDetailTable.Data = {};
+            sidebandTable.Data = {};
+            setDropdownItemsSafely(gridCaseDropdown, {}, 'No Data');
+            setDropdownItemsSafely(sidebandCaseDropdown, {}, 'No Data');
+            alertCaseNotCalculated(caseName);
+            return
+        end
+        gridHarmonicTable.Data = GridResultAll(rows,:);
+        GridCaseRowMap = find(rows);
+        CaseNames = cell(numel(GridCaseRowMap),1);
+        for m = 1:numel(GridCaseRowMap)
+            r = GridCaseRowMap(m);
+            CaseNames{m} = sprintf('%s - %s', ...
+                GridResultAll{r,1}, ...
+                GridResultAll{r,2});
         end
         setDropdownItemsSafely(gridCaseDropdown, CaseNames, 'No Data');
-        if ~isempty(CaseNames)
-            GH = GridHarmonicObjects{1};
-            gridHarmonicDetailTable.Data = ...
-                GH.Characteristic;
-            plotABBFrequencyMap();
-        end
-        if ~isempty(GridHarmonicObjects)
-            GH = GridHarmonicObjects{1};
-            SBData = cell(numel(GH.Sidebands),7);
-            for k = 1:numel(GH.Sidebands)
-                SBData(k,:) = {
-                    GH.Sidebands(k).Order,...
-                    GH.Sidebands(k).HarmonicA,...
-                    GH.Sidebands(k).HarmonicPct,...
-                    GH.Sidebands(k).CurrentA,...
-                    GH.Sidebands(k).CurrentPct,...
-                    round(GH.Sidebands(k).FreqMinus),...
-                    round(GH.Sidebands(k).FreqPlus)};
-            end
-            sidebandTable.Data = SBData;
-        end
         setDropdownItemsSafely(sidebandCaseDropdown, CaseNames, 'No Data');
-        ABBReportData = buildABBReportData();
+        updateGridHarmonicDetail();
+        updateSidebandDetail();
     end
     function updateSidebandDetail(~,~)
         idx = sidebandCaseDropdown.Value;
         items = sidebandCaseDropdown.Items;
-        row = find(strcmp(items,idx),1);
-        if isempty(row)
+        pos = find(strcmp(items,idx),1);
+        if isempty(pos) || pos > numel(GridCaseRowMap)
             return
         end
+        row = GridCaseRowMap(pos);
         GH = GridHarmonicObjects{row};
         SBData = cell(numel(GH.Sidebands),7);
         for k = 1:numel(GH.Sidebands)
@@ -3633,13 +3775,11 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
     function updateGridHarmonicDetail(~,~)
         idx = gridCaseDropdown.Value;
         items = gridCaseDropdown.Items;
-        row = find(strcmp(items,idx),1);
-        if isempty(row)
+        pos = find(strcmp(items,idx),1);
+        if isempty(pos) || pos > numel(GridCaseRowMap)
             return
         end
-        if row > numel(GridHarmonicObjects)
-            return
-        end
+        row = GridCaseRowMap(pos);
         GH = GridHarmonicObjects{row};
         gridHarmonicDetailTable.Data = ...
             GH.Characteristic;
@@ -3659,7 +3799,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         end
         D = DimensioningObjects{end};
         Data = NetzOperatingMatrix;
-        Results = cell(size(Data,1),9);
+        Results = cell(size(Data,1),10);
         LossObjects = cell(size(Data,1),1);
         for r = 1:size(Data,1)
             Point       = Data{r,1};
@@ -3676,6 +3816,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             u_Lstar    = Data{r,13};
             SCmin      = Data{r,15};   % holds this row's SC case value (SCmin or SCmax)
             deltaBeta  = Data{r,16};
+            SCCase     = Data{r,17};
             % -------------------------------------------------
             % Loss calculation
             % -------------------------------------------------
@@ -3771,12 +3912,14 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 round(Loss.Converter,0)
                 round(Loss.Total,0)
                 round(Loss.Pin,0)
+                SCCase
                 };
             Loss.uM = uMsolved;
             Loss.uLstar = uLstarSolved;
             Loss.PavgSolved = NetzCheck.Pavg;
             Loss.IL1ABB = targetIL1;
             Loss.IL1Netz = NetzCheck.IL1;
+            Loss.SCCase = SCCase;
             LossObjects{r,1} = Loss;
         end
         % -------------------------------------------------
@@ -3787,15 +3930,42 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % -------------------------------------------------
         % Update losses table
         % -------------------------------------------------
-        lossTable.Data = Results;
         LossResults = Results;
         lossTable.CellSelectionCallback = @selectLossCase;
+        % Default the view to whichever case this run's base (row 1) is
+        % -- keeps the SC Case dropdown in sync with what was just run.
+        lossViewSCDropdown.Value = Results{1,10};
+        updateLossView();
+    end
+    function updateLossView(~,~)
+        %UPDATELOSSVIEW  Filter the Losses table down to just the
+        %selected SC Case; alert if that case hasn't been computed.
+        caseName = lossViewSCDropdown.Value;
+        if isempty(LossResults)
+            lossTable.Data = {};
+            LossRowMap = [];
+            return
+        end
+        rows = strcmp(LossResults(:,10), caseName);
+        if ~any(rows)
+            lossTable.Data = {};
+            LossRowMap = [];
+            lossDetailTable.Data = {};
+            alertCaseNotCalculated(caseName);
+            return
+        end
+        lossTable.Data = LossResults(rows,:);
+        LossRowMap = find(rows);
     end
     function selectLossCase(~, event)
         if isempty(event.Indices)
             return
         end
-        row = event.Indices(1);
+        pos = event.Indices(1);
+        if pos > numel(LossRowMap)
+            return
+        end
+        row = LossRowMap(pos);
         if row > numel(LossObjects) || isempty(LossObjects{row})
             return
         end
