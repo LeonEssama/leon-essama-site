@@ -1107,13 +1107,13 @@ netzViewDropdown = uidropdown(...
     netzToolbar,...
     'Items',{'Betriebsart','Netzbelastung'},...
     'Value','Betriebsart',...
-    'Position',[430 5 180 25]);
+    'Position',[570 5 180 25]);
 netzViewDropdown.ValueChangedFcn = ...
     @updateNetzResultView;
 netzStatus = uilabel(...
     netzToolbar,...
     'Text','Ready',...
-    'Position',[640 5 200 25]);
+    'Position',[760 5 200 25]);
 netzResultTable = uitable(...
     tabNetz,...
     'Units','normalized',...
@@ -1134,6 +1134,17 @@ uibutton(netzToolbar,...
     'Text','Calculate Netzbelastung',...
     'Position',[210 5 180 25],...
     'ButtonPushedFcn',@runNetzbelastung);
+netzIncludeSCmax = uicheckbox(...
+    netzToolbar,...
+    'Text','Include SCmax case',...
+    'Value',false,...
+    'Position',[400 5 160 25]);
+netzIncludeSCmax.Tooltip = [ ...
+    'Off (default): the operating matrix uses only the SC case chosen ', ...
+    'in the Dimensioning popup for the latest Dimensioning run -- the ', ...
+    'grid strength that run was actually dimensioned against. On: also ', ...
+    'computes the other SC case (SCmin/SCmax) alongside it, doubling ', ...
+    'the matrix to 24 rows so both are visible side by side.'];
 gridHarmonicTable = uitable(...
     tabGridHarmonics,...
     'Units','normalized',...
@@ -2752,14 +2763,35 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'uL=1'
             'uLmax'
             };
-        % Two network short-circuit cases: SCmin (weakest grid --
-        % highest reactive/commutation burden) and SCmax (strongest
-        % grid), each run across all speed/voltage points.
-        SCCaseNames  = {'SCmin', 'SCmax'};
-        SCCaseValues = [Input.SC_min, Input.SC_max];
-        data = cell(24,17);
+        % Base case: whichever network short-circuit case was chosen in
+        % the Dimensioning popup for the latest Dimensioning run
+        % (DimensioningObjects{end}.Case) -- this is the SC assumption
+        % that D.Result was actually computed against. "Include SCmax
+        % case" additionally computes the other case alongside it, so
+        % both are visible side by side, instead of every generation
+        % silently mixing an unrelated SC_max into a run dimensioned
+        % for SCmin (or vice versa).
+        if strcmp(D.Case,'SCmax')
+            baseCaseName  = 'SCmax';
+            baseCaseValue = Input.SC_max;
+            otherCaseName  = 'SCmin';
+            otherCaseValue = Input.SC_min;
+        else
+            baseCaseName  = 'SCmin';
+            baseCaseValue = Input.SC_min;
+            otherCaseName  = 'SCmax';
+            otherCaseValue = Input.SC_max;
+        end
+        if netzIncludeSCmax.Value
+            SCCaseNames  = {baseCaseName, otherCaseName};
+            SCCaseValues = [baseCaseValue, otherCaseValue];
+        else
+            SCCaseNames  = {baseCaseName};
+            SCCaseValues = baseCaseValue;
+        end
+        data = cell(12*numel(SCCaseNames),17);
         row = 0;
-        for s = 1:2
+        for s = 1:numel(SCCaseNames)
             SCName  = SCCaseNames{s};
             SCValue = SCCaseValues(s);
             for i = 1:4
@@ -2953,15 +2985,18 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         netzResultTable.Data = Result;
         NetzBetriebsartResults = Result;
         NetzBelastungResults = BelastungResult;
-        % Two SC cases x four speed points = eight summary rows, so
-        % SCmin and SCmax results are both visible, not merged.
+        % One summary row per (speed point x SC case actually present in
+        % this matrix) -- four rows when only the Dimensioning-chosen
+        % case was computed, eight when "Include SCmax case" added the
+        % other one, so SCmin and SCmax results are both visible and
+        % not merged when both are present.
         SpeedPoints = {
             'Creeping'
             'MinSpeed'
             'BaseSpeed'
             'MaxSpeed'
             };
-        SCCaseNames = {'SCmin', 'SCmax'};
+        SCCaseNames = unique(BelastungResult(:,9),'stable');
         Summary = cell(numel(SpeedPoints)*numel(SCCaseNames),7);
         k = 0;
         for sc = 1:numel(SCCaseNames)
