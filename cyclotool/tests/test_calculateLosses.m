@@ -44,6 +44,27 @@ Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh);
 
 check('PV_Besch [W]', Loss.PV_Besch, 24938.55, TOL*24938.55);
 
+%% ===== Per-case Psh: PmachineNominal must use the passed Psh arg,
+% not DimResult.Psh (a real bug this test would have missed if both
+% were left equal, since runLosses() passes a per-operating-point Psh
+% that differs from the fixed dimensioning-time DimResult.Psh) =======
+etaM = Input.eta_M;
+DimResultOtherPsh = DimResult;
+DimResultOtherPsh.Psh = 999999;   % deliberately wrong, must be ignored
+
+Loss2 = calculateLosses(Input, DimResultOtherPsh, Thy, Speed, uLcase, Psh);
+
+PmachineNominalExpected = Psh * (1/etaM - 1);
+% Speed(10) >= n_nom(10) and uLcase(0.95)<1 -> field-weakening branches
+MachineExpected = PmachineNominalExpected*0.30/uLcase ...
+    + PmachineNominalExpected*0.50*uLcase^2 ...
+    + PmachineNominalExpected*0.20*(Speed/Input.n_nom)^2;
+
+check('Machine (uses Psh, not DimResult.Psh) [W]', ...
+    Loss2.Machine, MachineExpected, TOL*MachineExpected);
+check('PV_Besch unaffected by DimResult.Psh [W]', ...
+    Loss2.PV_Besch, Loss.PV_Besch, TOL*Loss.PV_Besch);
+
 fprintf('All calculateLosses tests passed.\n');
 
 end

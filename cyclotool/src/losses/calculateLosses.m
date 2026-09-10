@@ -59,7 +59,7 @@ Loss.Converter = k_res * (PV_Th + PV_Besch + PV_Zus);
 % ABB Machine Loss Model
 %% -------------------------------------------------
 etaM = Input.eta_M;
-PmachineNominal = DimResult.Psh * (1/etaM - 1);
+PmachineNominal = Psh * (1/etaM - 1);
 
 % ABB fixed split of nominal machine losses
 PcurrentBase = 0.30 * PmachineNominal;
