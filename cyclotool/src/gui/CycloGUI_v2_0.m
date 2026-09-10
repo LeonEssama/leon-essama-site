@@ -1099,8 +1099,9 @@ netzMatrixTable = uitable(...
     false ... u_L
     true  ... u_Lstar
     false ... UL
-    false ... SCmin
+    false ... SC
     true  ... deltaBeta
+    false ... SCCase
     ]);
 netzViewDropdown = uidropdown(...
     netzToolbar,...
@@ -2692,8 +2693,9 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'u_L'
             'u_Lstar'
             'UL'
-            'SCmin'
+            'SC'
             'deltaBeta'
+            'SCCase'
             };
         if isempty(DimensioningObjects)
 
@@ -2724,68 +2726,78 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'uL=1'
             'uLmax'
             };
-        data = cell(12,16);
+        % Two network short-circuit cases: SCmin (weakest grid --
+        % highest reactive/commutation burden) and SCmax (strongest
+        % grid), each run across all speed/voltage points.
+        SCCaseNames  = {'SCmin', 'SCmax'};
+        SCCaseValues = [Input.SC_min, Input.SC_max];
+        data = cell(24,17);
         row = 0;
-        for i = 1:4
-            Speed = SpeedValues(i);
-            Pnom = R.Psh;
-            if Speed <= Input.n_nom
-                Psh = Pnom * Speed / Input.n_nom;
-            else
-                Psh = Pnom;
-            end
-            UMnom = Input.UM;
-            for j = 1:3
-                row = row + 1;
-                switch j
-                    case 1
-                        uL = Input.u_L;
-                    case 2
-                        uL = 1.0;
-                    case 3
-                        uL = 2 - Input.u_L;
-                end
-                if Speed < Input.n_nom
-                    UM = UMnom * Speed / Input.n_nom;
+        for s = 1:2
+            SCName  = SCCaseNames{s};
+            SCValue = SCCaseValues(s);
+            for i = 1:4
+                Speed = SpeedValues(i);
+                Pnom = R.Psh;
+                if Speed <= Input.n_nom
+                    Psh = Pnom * Speed / Input.n_nom;
                 else
-                    if j == 1
-                        UM = UMnom * Input.u_L;
-                    else
-                        UM = UMnom;
+                    Psh = Pnom;
+                end
+                UMnom = Input.UM;
+                for j = 1:3
+                    row = row + 1;
+                    switch j
+                        case 1
+                            uL = Input.u_L;
+                        case 2
+                            uL = 1.0;
+                        case 3
+                            uL = 2 - Input.u_L;
                     end
+                    if Speed < Input.n_nom
+                        UM = UMnom * Speed / Input.n_nom;
+                    else
+                        if j == 1
+                            UM = UMnom * Input.u_L;
+                        else
+                            UM = UMnom;
+                        end
+                    end
+                    if j == 1
+
+                        iM = 1 / uL;
+
+                    else
+
+                        iM = 1.0;
+
+                    end
+                    if Speed < Input.n_nom
+                        gFaktorOP = 1.0;
+                    else
+                        gFaktorOP = Input.g_Faktor;
+                    end
+                    data(row,:) = {
+                        SpeedNames{i}
+                        VoltageNames{j}
+                        Speed
+                        Psh
+                        1.00          % initial guess for u_M
+                        UM
+                        iM            % ABB logic
+                        Input.IM
+                        Input.cosphi_M
+                        gFaktorOP
+                        R.Uv0N
+                        uL
+                        uL            % initial guess u_Lstar
+                        Input.UL
+                        SCValue
+                        1
+                        SCName
+                        };
                 end
-                if j == 1
-
-                    iM = 1 / uL;
-
-                else
-
-                    iM = 1.0;
-
-                end
-                if Speed < Input.n_nom
-                    gFaktorOP = 1.0;
-                else
-                    gFaktorOP = Input.g_Faktor;
-                end
-                data(row,:) = {
-                    SpeedNames{i}
-                    VoltageNames{j}
-                    Speed
-                    Psh
-                    1.00          % initial guess for u_M
-                    UM
-                    iM            % ABB logic
-                    Input.IM
-                    Input.cosphi_M
-                    gFaktorOP
-                    R.Uv0N
-                    uL
-                    uL            % initial guess u_Lstar
-                    Input.UL
-                    Input.SC_min
-                    1
-                    };
             end
         end
         netzMatrixTable.Data = data;
@@ -2818,8 +2830,9 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             u_L        = Data{r,12};
             u_Lstar    = Data{r,13};
             UL         = Data{r,14};
-            SCmin      = Data{r,15};
+            SC         = Data{r,15};
             deltaBeta  = Data{r,16};
+            SCCase     = Data{r,17};
             Udmax = (1/g_Faktor) * sqrt(2/3) * UM;
             if Speed < 1
                 % Special ABB Creeping mode
@@ -2867,7 +2880,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 tanphi_x = ...
                     (1/cos(Phi_x_Strich))* ...
                     ( sin(Phi_x_Strich) ...
-                    - abs(Pdi0_x)/SCmin );
+                    - abs(Pdi0_x)/SC );
                 P_x = abs(Id_x * Ud_x);
                 Q_x = abs(P_x * tanphi_x);
                 P_sum = P_sum + P_x;
@@ -2890,6 +2903,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 Savg
                 IL1
                 cosphiL
+                SCCase
                 };
             Result(r,:) = {
                 Data{r,1}
@@ -2898,6 +2912,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 Flanke
                 Trapezbetrieb
                 Udvirt
+                SCCase
                 };
         end
         netzResultTable.ColumnName = {
@@ -2907,35 +2922,46 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'Flanke'
             'Trapezbetrieb'
             'Udvirt'
+            'SCCase'
             };
         netzResultTable.Data = Result;
         NetzBetriebsartResults = Result;
         NetzBelastungResults = BelastungResult;
-        Summary = cell(4,6);
+        % Two SC cases x four speed points = eight summary rows, so
+        % SCmin and SCmax results are both visible, not merged.
         SpeedPoints = {
             'Creeping'
             'MinSpeed'
             'BaseSpeed'
             'MaxSpeed'
             };
-        for k = 1:4
-            Name = SpeedPoints{k};
-            rows = strcmp(BelastungResult(:,1),Name);
-            Pvals  = cell2mat(BelastungResult(rows,4));
-            Qvals  = cell2mat(BelastungResult(rows,5));
-            ILvals = cell2mat(BelastungResult(rows,7));
-            FlankeVals = [];
-            for m = find(rows).'
-                FlankeVals(end+1) = Result{m,4};
+        SCCaseNames = {'SCmin', 'SCmax'};
+        Summary = cell(numel(SpeedPoints)*numel(SCCaseNames),7);
+        k = 0;
+        for sc = 1:numel(SCCaseNames)
+            for sp = 1:numel(SpeedPoints)
+                k = k + 1;
+                Name = SpeedPoints{sp};
+                SCName = SCCaseNames{sc};
+                rows = strcmp(BelastungResult(:,1),Name) & ...
+                    strcmp(BelastungResult(:,9),SCName);
+                Pvals  = cell2mat(BelastungResult(rows,4));
+                Qvals  = cell2mat(BelastungResult(rows,5));
+                ILvals = cell2mat(BelastungResult(rows,7));
+                FlankeVals = [];
+                for m = find(rows).'
+                    FlankeVals(end+1) = Result{m,4}; %#ok<AGROW>
+                end
+                Summary(k,:) = {
+                    Name
+                    SCName
+                    max(FlankeVals)
+                    max(Pvals)/1e6
+                    max(Qvals)/1e6
+                    max(ILvals)
+                    mean(cell2mat(BelastungResult(rows,8)))
+                    };
             end
-            Summary(k,:) = {
-                Name
-                max(FlankeVals)
-                max(Pvals)/1e6
-                max(Qvals)/1e6
-                max(ILvals)
-                mean(cell2mat(BelastungResult(rows,8)))
-                };
         end
         NetzSummaryResults = Summary;
         WorstDeltaT = max(cell2mat(BelastungResult(:,3)));
@@ -2954,6 +2980,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             WorstCosPhi};
         netzSummaryTable.ColumnName = {
             'Point'
+            'SCCase'
             'Max ΔT/T'
             'Max Pavg [MW]'
             'Max Qavg [MVAr]'
@@ -2974,6 +3001,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     'Flanke'
                     'Trapezbetrieb'
                     'Udvirt'
+                    'SCCase'
                     };
                 netzResultTable.Data = ...
                     NetzBetriebsartResults;
@@ -2988,6 +3016,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     'Savg'
                     'IL1'
                     'cosphiL'
+                    'SCCase'
                     };
 
                 netzResultTable.Data = ...
@@ -3584,7 +3613,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             Uv0N       = Data{r,11};
             uLcase     = Data{r,12};
             u_Lstar    = Data{r,13};
-            SCmin      = Data{r,15};
+            SCmin      = Data{r,15};   % holds this row's SC case value (SCmin or SCmax)
             deltaBeta  = Data{r,16};
             % -------------------------------------------------
             % Loss calculation
