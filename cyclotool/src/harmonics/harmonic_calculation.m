@@ -68,6 +68,19 @@ H.KI(1) = H.KI(1) * korr5;
 H.IL(1) = H.IL(1) * korr5;
 H.KU(1) = H.KU(1) * korr5;
 
+%% Worst-case (uncancelled) spectrum
+% Reverses the pulse-cancellation credit (coeff, from unsymmetryCoeff)
+% on the non-characteristic orders, reconstructing the magnitude each
+% would have if the multi-pulse bridges gave zero mutual cancellation
+% (firing-angle/impedance/load unbalance). korr5 is a physical 5th-
+% harmonic correction, not a cancellation credit, so it stays applied.
+% Reduces to H.KI/H.IL/H.KU unchanged on the characteristic orders
+% (coeff = 1). Engineering practice (conservative design envelope for
+% manufacturer specification), not an IEC/IEEE-mandated figure.
+H.KI_worst = H.KI ./ coeff;
+H.IL_worst = H.KI_worst/100 * IL1;
+H.KU_worst = H.KI_worst .* h * S / SCC;
+
 %% Voltage distortion (up to the 25th, and total)
 idx25 = H.HOrder <= 25;
 H.ku25  = sqrt(sum(H.KU(idx25).^2));
