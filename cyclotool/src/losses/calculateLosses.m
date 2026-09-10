@@ -28,6 +28,15 @@ Loss = struct();
 n_DB = Input.PulseNumber;
 n_Th = 6 * n_DB;
 
+% Number of secondary transformer windings (1/2/3 for 6/12/18-pulse).
+% DimResult.Uv0N is the per-winding (per 6-pulse bridge-group) voltage
+% times N_series when computed by the dimensioning stage for a >6-pulse
+% converter -- consistent with N_SerieN = PulseNumber/6 already used
+% for the thyristor voltage-class check in calculate.m/cyclo_dimensioning.m.
+% The individual-snubber ("Einzelbeschaltung") loss formula needs the
+% per-winding value, so Uv0N must be divided back down by N_series here.
+N_series = Input.PulseNumber / 6;
+
 PVSch = DimResult.PVS;
 
 PV_Th = n_DB * ...
@@ -37,7 +46,7 @@ Loss.PV_Th = PV_Th;
 
 n_B = n_Th / 2;
 PV_Besch = n_B * (1.75 * Input.fL * Input.CB * ...
-    (uLcase * DimResult.Uv0N * sqrt(2))^2);
+    (uLcase * DimResult.Uv0N/N_series * sqrt(2))^2);
 Loss.PV_Besch = PV_Besch;
 
 PV_Zus = 0;
