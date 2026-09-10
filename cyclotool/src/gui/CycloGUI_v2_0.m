@@ -1099,7 +1099,7 @@ netzMatrixTable = uitable(...
     false ... u_L
     true  ... u_Lstar
     false ... UL
-    false ... SC
+    false ... SCmin
     true  ... deltaBeta
     false ... SCCase
     ]);
@@ -2693,7 +2693,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'u_L'
             'u_Lstar'
             'UL'
-            'SC'
+            'SCmin'
             'deltaBeta'
             'SCCase'
             };
@@ -2830,7 +2830,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             u_L        = Data{r,12};
             u_Lstar    = Data{r,13};
             UL         = Data{r,14};
-            SC         = Data{r,15};
+            SCmin      = Data{r,15};   % holds this row's SC case value (SCmin or SCmax)
             deltaBeta  = Data{r,16};
             SCCase     = Data{r,17};
             Udmax = (1/g_Faktor) * sqrt(2/3) * UM;
@@ -2880,7 +2880,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 tanphi_x = ...
                     (1/cos(Phi_x_Strich))* ...
                     ( sin(Phi_x_Strich) ...
-                    - abs(Pdi0_x)/SC );
+                    - abs(Pdi0_x)/SCmin );
                 P_x = abs(Id_x * Ud_x);
                 Q_x = abs(P_x * tanphi_x);
                 P_sum = P_sum + P_x;
