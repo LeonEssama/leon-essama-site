@@ -133,6 +133,13 @@ R.STN_Limit  = STN_Limit;
 R.STN_OK     = true;
 R.STr_sizing = R.STN * Input.ReserveFactor;
 
+% STr sizing must clear the reserve-scaled thermal floor:
+% STr_sizing > ReserveFactor * (Psh/3). Always true when STN >= Psh/3
+% (already enforced above) since STr_sizing = STN*ReserveFactor; kept
+% as an explicit, reported check rather than an implicit corollary.
+R.STr_Limit = Input.ReserveFactor * STN_Limit;
+R.STr_OK    = R.STr_sizing > R.STr_Limit;
+
 R.Uv0_Error = 100 * (R.Uv0N - Input.Uv0N_target) / Input.Uv0N_target;
 R.IkN_Error = 100 * (R.IkN - Input.Thy.IKS0) / Input.Thy.IKS0;
 
