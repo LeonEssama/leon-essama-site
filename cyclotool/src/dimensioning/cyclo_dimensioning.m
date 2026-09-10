@@ -4,9 +4,10 @@ function R = cyclo_dimensioning(Input)
 %   R = cyclo_dimensioning(Input) optimizes the free voltage-margin
 %   parameter(s) (u_r, and exT when not fixed) so that calculate(Input)
 %   meets its target Uv0N as closely as possible, then runs the final
-%   dimensioning, checks the result against the STN/3 thermal limit, and
-%   assembles the full results struct (margins, optimizer diagnostics,
-%   input echo and PASS/FAIL status) expected by CycloGUI.
+%   dimensioning, sizes the transformer power STr against the
+%   reserve-scaled thermal floor ReserveFactor*(Psh/3), and assembles
+%   the full results struct (margins, optimizer diagnostics, input
+%   echo and PASS/FAIL status) expected by CycloGUI.
 %
 %   Input structure: from CycloGUI (see calculate.m / objective_fun_*
 %   for the required fields).
@@ -123,15 +124,25 @@ end
 %% ----------------------------------------------------------
 R = calculate(Input);
 
-STN_Limit = R.Psh/3;
-if R.STN < STN_Limit
-    error('cyclo_dimensioning:STNBelowLimit', ...
-        'STN below limit\n\nSTN = %.2f MVA\nLimit = %.2f MVA', ...
-        R.STN/1e6, STN_Limit/1e6);
+% Condition: STN >= ReserveFactor * (Psh/3).
+%   If satisfied, the transformer sizing power STr = STN.
+%   If not, STr is raised to the smallest value that satisfies it:
+%   STr = ReserveFactor * (Psh/3). No longer a hard error -- the
+%   reserve-scaled thermal floor is met by sizing STr accordingly
+%   instead of rejecting the dimensioning outright.
+STN_Limit   = R.Psh/3;
+R.STN_Limit = STN_Limit;
+
+STr_Limit   = Input.ReserveFactor * STN_Limit;
+R.STr_Limit = STr_Limit;
+
+R.STN_OK = R.STN >= STr_Limit;
+if R.STN_OK
+    R.STr_sizing = R.STN;
+else
+    R.STr_sizing = STr_Limit;
 end
-R.STN_Limit  = STN_Limit;
-R.STN_OK     = true;
-R.STr_sizing = R.STN * Input.ReserveFactor;
+R.STr_OK = R.STr_sizing >= STr_Limit;
 
 R.Uv0_Error = 100 * (R.Uv0N - Input.Uv0N_target) / Input.Uv0N_target;
 R.IkN_Error = 100 * (R.IkN - Input.Thy.IKS0) / Input.Thy.IKS0;
