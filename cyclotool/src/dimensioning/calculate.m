@@ -48,7 +48,6 @@ u_L         = Input.uL_used;
 g_Faktor    = Input.g_Faktor;
 overload    = Input.overload;
 aN          = Input.a_Nmin;
-aN_therm    = pi/2;
 SC_min      = Input.SC_min;
 k_C         = Input.k_C;
 fL          = Input.fL;
@@ -263,14 +262,9 @@ R.k_N = N_SerieN * Thy.UDRM / (sqrt(2) * R.Uv0N);
 R.Uv0ClassOK = (R.Uv0N <= R.Uv0Max);
 
 %% ==========================================================
-% Actual thyristor voltage
+% Actual di/dt (90 deg reference, no sin(aN_therm) factor -- kept
+% inline since it is not consumed by the thermal iteration below)
 %% ==========================================================
-R.Uv = uL_used * sqrt(2) * R.Uv0N / N_SerieN * sin(aN_therm);
-
-%% ==========================================================
-% Actual di/dt
-%% ==========================================================
-R.didtv  = pi*fL*sqrt(3/2) * I1S_used/R.dxN * uL_used * sin(aN_therm) / 1e6;
 R.didt90 = pi*fL*sqrt(3/2) * I1S_used/R.dxN * uL_used / 1e6;
 
 %% ==========================================================
@@ -282,55 +276,16 @@ Rthha = Thy.Rth_ha / 1000;
 R.Rthtot = Rthjc + Rthch + Rthha;
 
 %% ==========================================================
-% Iterative thermal computation (junction temperature Tj)
+% Thyristor voltage/di-dt and iterative thermal computation
+% (junction temperature Tj, switching loss PVS) -- extracted to
+% calculate_thyristor_thermal.m so runLosses() can re-run it per
+% Netz operating-point row (varying uL_used/IM) instead of reusing
+% this single nominal-point PVS for every case.
 %% ==========================================================
-Tj = 1;
-TjHist = [];
-for iter = 1:200
-    if Thy.i + Thy.j*Tj/Thy.Tj_b > 1
-        f_Tj = Thy.i + Thy.j*Tj/Thy.Tj_b;
-    else
-        f_Tj = 1;
-    end
-
-    PVS = 1.05/Thy.PL_ThS_b ...
-        * (Thy.a*(R.Uv/Thy.Uv0_b) + Thy.b*(R.Uv/Thy.Uv0_b)^2) ...
-        * (Thy.c*(R.didtv/Thy.di_dt_b) + Thy.d*sqrt(R.didtv/Thy.di_dt_b)) ...
-        * fL/Thy.f_b * f_Tj;
-
-    if strcmpi(Input.Mode, 'rms')
-        PLTh = ((2*sqrt(2)/pi)*Thy.UT0*IM + Thy.rT*IM^2)/6 + PVS;
-    else
-        PLTh = (sqrt(2)*IM_used/3)*Thy.UT0 + 3*Thy.rT*(sqrt(2)*IM_used/3)^2 + PVS;
-    end
-
-    PLR = NaN;
-    Taus_KD = NaN;
-    Tein = NaN;
-    Tav_KD = NaN;
-    red = 0;
-
-    if strcmpi(Input.Cooling, 'Water')
-        if PulseNumber == 6*N_SerieN
-            red = 1;
-        else
-            red = 0.85;
-        end
-        PLR     = 1.75*fL*Input.CB*(R.Uv/red)^2;
-        Taus_KD = Input.Taus_max - PLR/1000*60/Input.Qw/4.187;
-        Tein    = Taus_KD - 0.5*PLTh/1000*60/Input.Qw/4.187;
-        Tav_KD  = Tein;
-        TjNew   = PLTh*R.Rthtot + Tav_KD;
-    else
-        TjNew = Input.Tamb + PLTh*R.Rthtot;
-    end
-
-    TjHist(end+1) = TjNew; %#ok<AGROW>
-    if abs(1 - TjNew/Tj) < 1e-5
-        break
-    end
-    Tj = TjNew;
-end
+[R.Uv, R.didtv, TjNew, PVS, PLTh, PLR, Taus_KD, Tein, Tav_KD, red, TjHist] = ...
+    calculate_thyristor_thermal(uL_used, I1S_used, R.dxN, R.Uv0N, ...
+    N_SerieN, fL, IM, IM_used, Input.Mode, PulseNumber, Input.Cooling, ...
+    Input.CB, Input.Taus_max, Input.Qw, Input.Tamb, Thy);
 
 %% ==========================================================
 % Thermal outputs
