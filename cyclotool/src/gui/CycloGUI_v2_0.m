@@ -1850,6 +1850,29 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         populateDimensioningResults(D);
         populateDimensioningDetail(D.Result);
     end
+    function D = getBaseDimensioning()
+        %GETBASEDIMENSIONING  The SCmin-tagged Dimensioning result the
+        %whole Netz/Losses/Grid-Harmonics/Spectrum pipeline is built
+        %against. SCmin (weakest grid) is this tool's baseline case
+        %throughout -- every "Select network case" popup defaults to it,
+        %and it is the worse case for both commutation reactance (dxN)
+        %and grid voltage distortion (ku), which scales inversely with
+        %SC power. generateNetzMatrix(), runLosses(), runGridHarmonics()
+        %and plotABBFrequencyMap() must all use this SAME dimensioning
+        %result, not each independently grab DimensioningObjects{end} --
+        %that silently mismatches them against each other (e.g. Losses
+        %computed from an SCmax-dimensioned D.Thy/D.Result while the
+        %operating matrix it is iterating over was generated from an
+        %SCmin-dimensioned one) the moment an SCmax Dimensioning run
+        %happens to be the latest one in history.
+        D = [];
+        for k = numel(DimensioningObjects):-1:1
+            if strcmp(DimensioningObjects{k}.Case,'SCmin')
+                D = DimensioningObjects{k};
+                return
+            end
+        end
+    end
     function alertCaseNotCalculated(caseName)
         %ALERTCASENOTCALCULATED  Shared "not computed yet" message for
         %every SC Case view selector (Converter Harmonics, Netzbelastung,
@@ -2815,7 +2838,16 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
 
         end
 
-        D = DimensioningObjects{end};
+        D = getBaseDimensioning();
+        if isempty(D)
+            uialert(fig, [ ...
+                'No SCmin dimensioning available. Run Dimensioning for ', ...
+                'the SCmin case first -- it is the baseline the ', ...
+                'operating matrix, Losses, Grid Harmonics and Spectrum ', ...
+                'are all generated against.'], ...
+                'No Data');
+            return
+        end
         Input = D.Input;
         R     = D.Result;
         SpeedValues = [ ...
@@ -2834,31 +2866,18 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'uL=1'
             'uLmax'
             };
-        % Base case: whichever network short-circuit case was chosen in
-        % the Dimensioning popup for the latest Dimensioning run
-        % (DimensioningObjects{end}.Case) -- this is the SC assumption
-        % that D.Result was actually computed against. "Include SCmax
-        % case" additionally computes the other case alongside it, so
-        % both are visible side by side, instead of every generation
-        % silently mixing an unrelated SC_max into a run dimensioned
-        % for SCmin (or vice versa).
-        if strcmp(D.Case,'SCmax')
-            baseCaseName  = 'SCmax';
-            baseCaseValue = Input.SC_max;
-            otherCaseName  = 'SCmin';
-            otherCaseValue = Input.SC_min;
-        else
-            baseCaseName  = 'SCmin';
-            baseCaseValue = Input.SC_min;
-            otherCaseName  = 'SCmax';
-            otherCaseValue = Input.SC_max;
-        end
+        % Base case is always SCmin (D is guaranteed SCmin-tagged by
+        % getBaseDimensioning() above) -- the SC assumption D.Result was
+        % actually computed against. "Include SCmax case" additionally
+        % adds SCmax rows using the SAME D.Result (dxN, Uv0N, Psh etc.
+        % are not independently re-dimensioned per case -- only the
+        % Grid SCC Power value differs between the two blocks of rows).
         if netzIncludeSCmax.Value
-            SCCaseNames  = {baseCaseName, otherCaseName};
-            SCCaseValues = [baseCaseValue, otherCaseValue];
+            SCCaseNames  = {'SCmin', 'SCmax'};
+            SCCaseValues = [Input.SC_min, Input.SC_max];
         else
-            SCCaseNames  = {baseCaseName};
-            SCCaseValues = baseCaseValue;
+            SCCaseNames  = {'SCmin'};
+            SCCaseValues = Input.SC_min;
         end
         data = cell(12*numel(SCCaseNames),17);
         row = 0;
@@ -3244,11 +3263,20 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             43
             47
             49 ];
+        DimObj = getBaseDimensioning();
+        if isempty(DimObj)
+            uialert(fig, [ ...
+                'No SCmin dimensioning available. Run Dimensioning for ', ...
+                'the SCmin case first -- Grid Harmonics must use the ', ...
+                'same dimensioning result the current Netzbelastung ', ...
+                'result was generated from.'], ...
+                'No Data');
+            return
+        end
         % Reset storage
         GridHarmonicObjects = {};
         % Summary table
         GridResult = cell(size(Data,1),13);
-        DimObj    = DimensioningObjects{end};
         DimInput  = DimObj.Input;
         DimResult = DimObj.Result;
         for r = 1:size(Data,1)
@@ -3567,7 +3595,15 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
     end
     function plotABBFrequencyMap()
         cla(spectrumAx)
-        Input = DimensioningObjects{end}.Input;
+        DBase = getBaseDimensioning();
+        if isempty(DBase)
+            % Defensive fallback only -- by the time this plot function
+            % runs (from updateSidebandDetail/updateGridHarmonicView),
+            % Grid Harmonics has already required an SCmin dimensioning
+            % to exist, so this should not be reachable in practice.
+            DBase = DimensioningObjects{end};
+        end
+        Input = DBase.Input;
         fL = Input.fL;
         Speed = linspace( ...
             0,...
@@ -3821,7 +3857,16 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 'No Data');
             return
         end
-        D = DimensioningObjects{end};
+        D = getBaseDimensioning();
+        if isempty(D)
+            uialert(fig, [ ...
+                'No SCmin dimensioning available. Run Dimensioning for ', ...
+                'the SCmin case first -- Losses must use the same ', ...
+                'dimensioning result the current operating matrix was ', ...
+                'generated from.'], ...
+                'No Data');
+            return
+        end
         Data = NetzOperatingMatrix;
         Results = cell(size(Data,1),10);
         LossObjects = cell(size(Data,1),1);
