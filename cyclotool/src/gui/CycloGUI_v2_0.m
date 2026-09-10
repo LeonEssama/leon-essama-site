@@ -631,12 +631,29 @@ UV0_Oversized = uidropdown(...
 %% ----------------------------------------------------------
 statorPanel = uipanel(tabOVInput,...
     'Title','STATOR CROWBAR',...
-    'Position',[10 560 390 300]);
+    'Position',[10 560 390 340]);
+uilabel(statorPanel,...
+    'Text','Stator Uv0 Source',...
+    'Position',[10 300 150 22]);
+StatorUv0Mode = uidropdown(statorPanel,...
+    'Items',{'Manual','Auto (n x Uv0N)'},...
+    'Value','Manual',...
+    'Position',[170 300 180 22]);
+StatorUv0Mode.Tooltip = ['Manual: type Stator Uv0 directly. Auto: compute ', ...
+    'Uv0_stator = n * Uv0N from the latest dimensioning result at ', ...
+    'Calculate time, where n = PulseNumber/6 is the number of ', ...
+    'secondary transformer windings (1/2/3 for 6/12/18-pulse). Per ', ...
+    'ABB TN 95/679 Sec.4.4: "bei Uamin wird fuer 12-puls. Schaltung: ', ...
+    '2*Uv0 eingesetzt" -- the 18-pulse (n=3) case is extrapolated by ', ...
+    'the same per-winding logic; the source document only states the ', ...
+    '12-pulse case explicitly.'];
+StatorUv0Mode.ValueChangedFcn = @(~,~) updateStatorUv0Mode();
 Uv0_stator = addField(...
     statorPanel,...
     'Stator Uv0 [V]',...
     1270,...
     220);
+updateStatorUv0Mode();
 uLmax_OV = addField(...
     statorPanel,...
     'uL max [pu]',...
@@ -1593,6 +1610,8 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             str2double(UV0_Selected.Value);
         Input.UV0_Oversized = ...
             str2double(UV0_Oversized.Value);
+        Input.StatorUv0Mode = ...
+            StatorUv0Mode.Value;
         Input.Uv0_stator = ...
             Uv0_stator.Value;
         Input.uLmax_OV = ...
@@ -1732,6 +1751,17 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         %(shared Zbase); refresh whichever is in an Estimate mode.
         updateLsEstimate();
         updateRsEstimate();
+    end
+    function updateStatorUv0Mode()
+        %UPDATESTATORUV0MODE  Keep the Stator Uv0 [V] field's Editable
+        %state consistent with the selected source. The Auto value
+        %itself is computed in runOVProtection() at Calculate time
+        %(depends on the latest dimensioning result, not a live field).
+        if strcmpi(StatorUv0Mode.Value,'Auto (n x Uv0N)')
+            Uv0_stator.Editable = 'off';
+        else
+            Uv0_stator.Editable = 'on';
+        end
     end
     function selectDimensioningCase(~, event)
 
@@ -4304,10 +4334,17 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             if isempty(DimensioningObjects)
                 error('Run Dimensioning first.');
             end
-            % Build standard input
-            Input = buildInput([]);
             % Use latest dimensioning result
             D = DimensioningObjects{end};
+            % Auto Stator Uv0: n * Uv0N, n = PulseNumber/6 secondary
+            % transformer windings (1/2/3 for 6/12/18-pulse). Must run
+            % before buildInput() below, which reads Uv0_stator.Value.
+            if strcmpi(StatorUv0Mode.Value,'Auto (n x Uv0N)')
+                n_windings = D.Input.PulseNumber / 6;
+                Uv0_stator.Value = n_windings * D.Result.Uv0N;
+            end
+            % Build standard input
+            Input = buildInput([]);
             % Maximum motor current for crowbar sizing
             Input.IMmax_OV = D.Result.IM_start;
             % Run OV calculation
@@ -5926,6 +5963,12 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         %% =====================================================
         % OV PROTECTION
         %% =====================================================
+        if isfield(P,'StatorUv0Mode')
+            StatorUv0Mode.Value = P.StatorUv0Mode;
+        else
+            StatorUv0Mode.Value = 'Manual';
+        end
+        updateStatorUv0Mode();
         Uv0_stator.Value = P.Uv0_stator;
         uLmax_OV.Value   = P.uLmax_OV;
         VDRM_OV.Value    = P.VDRM_OV;
@@ -6123,7 +6166,9 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % OV Protection
         %% ==========================================
 
+        StatorUv0Mode.Value = 'Manual';
         Uv0_stator.Value = 1270;
+        updateStatorUv0Mode();
 
         uLmax_OV.Value = 1.1;
 
