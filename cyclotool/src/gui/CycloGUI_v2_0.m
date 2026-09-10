@@ -1107,13 +1107,13 @@ netzViewDropdown = uidropdown(...
     netzToolbar,...
     'Items',{'Betriebsart','Netzbelastung'},...
     'Value','Betriebsart',...
-    'Position',[430 5 180 25]);
+    'Position',[570 5 180 25]);
 netzViewDropdown.ValueChangedFcn = ...
     @updateNetzResultView;
 netzStatus = uilabel(...
     netzToolbar,...
     'Text','Ready',...
-    'Position',[640 5 200 25]);
+    'Position',[760 5 200 25]);
 netzResultTable = uitable(...
     tabNetz,...
     'Units','normalized',...
@@ -1134,6 +1134,17 @@ uibutton(netzToolbar,...
     'Text','Calculate Netzbelastung',...
     'Position',[210 5 180 25],...
     'ButtonPushedFcn',@runNetzbelastung);
+netzIncludeSCmax = uicheckbox(...
+    netzToolbar,...
+    'Text','Include SCmax case',...
+    'Value',false,...
+    'Position',[400 5 160 25]);
+netzIncludeSCmax.Tooltip = [ ...
+    'Off (default): the operating matrix uses only the SC case chosen ', ...
+    'in the Dimensioning popup for the latest Dimensioning run -- the ', ...
+    'grid strength that run was actually dimensioned against. On: also ', ...
+    'computes the other SC case (SCmin/SCmax) alongside it, doubling ', ...
+    'the matrix to 24 rows so both are visible side by side.'];
 gridHarmonicTable = uitable(...
     tabGridHarmonics,...
     'Units','normalized',...
@@ -1426,10 +1437,19 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             %% Store selected case
             Input.CaseName = choice;
             %% Dimensioning
+            % calculate.m's commutation-reactance formula (dxN) reads a
+            % single Input.SC_min as "the active grid short-circuit
+            % power" -- when the user picks the SCmax case, feed it
+            % SC_max via a separate copy, not by overwriting Input.SC_min
+            % itself. Input (stored below into DimObj.Input) must keep
+            % SC_min and SC_max as their true, distinct GUI values, or
+            % downstream consumers (generateNetzMatrix's SCmin/SCmax
+            % dual-case matrix) see the same value for both cases.
+            DimensioningInput = Input;
             if strcmp(choice,'SCmax')
-                Input.SC_min = Input.SC_max;
+                DimensioningInput.SC_min = Input.SC_max;
             end
-            R = cyclo_dimensioning(Input);
+            R = cyclo_dimensioning(DimensioningInput);
             R = ...
                 cyclo_attach_case_metadata( ...
                 R, ...
@@ -1790,9 +1810,26 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         populateDimensioningResults(D);
         populateDimensioningDetail(D.Result);
     end
+    function v = getResultField(S, name, default)
+        %GETRESULTFIELD  S.(name) if present, else default -- lets a
+        %Result struct loaded from an older saved project (missing a
+        %field a later code version added) display instead of crashing.
+        if isfield(S, name)
+            v = S.(name);
+        else
+            v = default;
+        end
+    end
     function populateDimensioningResults(D)
         R   = D.Result;
         Thy = D.Thy;
+        % Projects saved before the STr sizing rework won't have these
+        % Result fields -- fall back to NaN instead of crashing loadProject.
+        STN_Limit_disp   = getResultField(R,'STN_Limit',NaN);
+        STr_sizing_disp  = getResultField(R,'STr_sizing',NaN);
+        STr_Limit_disp   = getResultField(R,'STr_Limit',NaN);
+        STN_OK_disp      = getResultField(R,'STN_OK',NaN);
+        STr_OK_disp      = getResultField(R,'STr_OK',NaN);
         electricalTable.Data = {
             'UDRM',Thy.UDRM,'V';
             'Uv0N',R.Uv0N,'V';
@@ -1840,23 +1877,23 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         'Ik(N)',        R.IkN,            'A';
 
         'S(R)',         R.STN,            'kVA';
-        'STN Limit',    R.STN_Limit,      'VA';
+        'STN Limit',    STN_Limit_disp,   'VA';
 
         'Reserve Factor',...
         D.Input.ReserveFactor,...
         '-';
 
         'STr Sizing',...
-        R.STr_sizing,...
+        STr_sizing_disp,...
         'VA';
         'STr Limit',...
-        R.STr_Limit,...
+        STr_Limit_disp,...
         'VA';
         'STN/Psh Limit', ...
-        R.STN_OK,...
+        STN_OK_disp,...
         '-';
         'STr/Reserve Limit', ...
-        R.STr_OK,...
+        STr_OK_disp,...
         '-';
         'k(N)',         R.k_N,            '-'
 
@@ -2726,14 +2763,35 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             'uL=1'
             'uLmax'
             };
-        % Two network short-circuit cases: SCmin (weakest grid --
-        % highest reactive/commutation burden) and SCmax (strongest
-        % grid), each run across all speed/voltage points.
-        SCCaseNames  = {'SCmin', 'SCmax'};
-        SCCaseValues = [Input.SC_min, Input.SC_max];
-        data = cell(24,17);
+        % Base case: whichever network short-circuit case was chosen in
+        % the Dimensioning popup for the latest Dimensioning run
+        % (DimensioningObjects{end}.Case) -- this is the SC assumption
+        % that D.Result was actually computed against. "Include SCmax
+        % case" additionally computes the other case alongside it, so
+        % both are visible side by side, instead of every generation
+        % silently mixing an unrelated SC_max into a run dimensioned
+        % for SCmin (or vice versa).
+        if strcmp(D.Case,'SCmax')
+            baseCaseName  = 'SCmax';
+            baseCaseValue = Input.SC_max;
+            otherCaseName  = 'SCmin';
+            otherCaseValue = Input.SC_min;
+        else
+            baseCaseName  = 'SCmin';
+            baseCaseValue = Input.SC_min;
+            otherCaseName  = 'SCmax';
+            otherCaseValue = Input.SC_max;
+        end
+        if netzIncludeSCmax.Value
+            SCCaseNames  = {baseCaseName, otherCaseName};
+            SCCaseValues = [baseCaseValue, otherCaseValue];
+        else
+            SCCaseNames  = {baseCaseName};
+            SCCaseValues = baseCaseValue;
+        end
+        data = cell(12*numel(SCCaseNames),17);
         row = 0;
-        for s = 1:2
+        for s = 1:numel(SCCaseNames)
             SCName  = SCCaseNames{s};
             SCValue = SCCaseValues(s);
             for i = 1:4
@@ -2756,12 +2814,12 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                             uL = 2 - Input.u_L;
                     end
                     if Speed < Input.n_nom
-                        UM = UMnom * Speed / Input.n_nom;
+                        UM_op = UMnom * Speed / Input.n_nom;
                     else
                         if j == 1
-                            UM = UMnom * Input.u_L;
+                            UM_op = UMnom * Input.u_L;
                         else
-                            UM = UMnom;
+                            UM_op = UMnom;
                         end
                     end
                     if j == 1
@@ -2784,7 +2842,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                         Speed
                         Psh
                         1.00          % initial guess for u_M
-                        UM
+                        UM_op
                         iM            % ABB logic
                         Input.IM
                         Input.cosphi_M
@@ -2809,8 +2867,8 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         if isempty(Data)
             return
         end
-        Result = cell(size(Data,1),6);
-        BelastungResult = cell(size(Data,1),8);
+        Result = cell(size(Data,1),7);
+        BelastungResult = cell(size(Data,1),9);
         for r = 1:size(Data,1)
             Speed = Data{r,3};
             Psh = Data{r,4};
@@ -2821,7 +2879,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 Pin = LossObjects{r}.Pin;
             end
             u_M        = Data{r,5};
-            UM         = Data{r,6};
+            UM_op      = Data{r,6};
             i_M        = Data{r,7};
             IM         = Data{r,8};
             cosphi_M   = Data{r,9};
@@ -2833,21 +2891,21 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             SCmin      = Data{r,15};   % holds this row's SC case value (SCmin or SCmax)
             deltaBeta  = Data{r,16};
             SCCase     = Data{r,17};
-            Udmax = (1/g_Faktor) * sqrt(2/3) * UM;
+            Udmax = (1/g_Faktor) * sqrt(2/3) * UM_op;
             if Speed < 1
                 % Special ABB Creeping mode
                 Flanke = 0.5;
                 Trapezbetrieb = false;
                 Udvirt = ...
-                    u_M * sqrt(2/3) * UM;
+                    u_M * sqrt(2/3) * UM_op;
             else
                 Flanke = (1/0.6) * ...
-                    (1.3 - sqrt(2/3)*UM*u_M/Udmax);
+                    (1.3 - sqrt(2/3)*UM_op*u_M/Udmax);
                 if Flanke >= 0.5
                     Trapezbetrieb = false;
                     Flanke = 0.5;
                     Udvirt = ...
-                        u_M * sqrt(2/3) * UM;
+                        u_M * sqrt(2/3) * UM_op;
                 else
                     Trapezbetrieb = true;
                     Udvirt = ...
@@ -2927,15 +2985,18 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         netzResultTable.Data = Result;
         NetzBetriebsartResults = Result;
         NetzBelastungResults = BelastungResult;
-        % Two SC cases x four speed points = eight summary rows, so
-        % SCmin and SCmax results are both visible, not merged.
+        % One summary row per (speed point x SC case actually present in
+        % this matrix) -- four rows when only the Dimensioning-chosen
+        % case was computed, eight when "Include SCmax case" added the
+        % other one, so SCmin and SCmax results are both visible and
+        % not merged when both are present.
         SpeedPoints = {
             'Creeping'
             'MinSpeed'
             'BaseSpeed'
             'MaxSpeed'
             };
-        SCCaseNames = {'SCmin', 'SCmax'};
+        SCCaseNames = unique(BelastungResult(:,9),'stable');
         Summary = cell(numel(SpeedPoints)*numel(SCCaseNames),7);
         k = 0;
         for sc = 1:numel(SCCaseNames)
@@ -3605,7 +3666,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             VoltageCase = Data{r,2};
             Speed = Data{r,3};
             Psh   = Data{r,4};
-            UM         = Data{r,6};
+            UM_op      = Data{r,6};
             i_M        = Data{r,7};
             IM         = Data{r,8};
             cosphi_M   = Data{r,9};
@@ -3657,7 +3718,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             uMsolved = solveUM( ...
                 targetPin,...
                 Speed,...
-                UM,...
+                UM_op,...
                 i_M,...
                 IM,...
                 cosphi_M,...
@@ -3674,7 +3735,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             UL = Data{r,14};
             NetzCheck = calculateNetzIL1( ...
                 uMsolved,...
-                UM,...
+                UM_op,...
                 i_M,...
                 IM,...
                 cosphi_M,...
