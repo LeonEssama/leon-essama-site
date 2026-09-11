@@ -268,11 +268,29 @@ P.Eoff = [ ...
 
 P.dt = 1e-6;
 
+% Number of motor electrical periods to simulate. Optional; defaults to
+% 1 (the original single-period behavior, unchanged for every existing
+% caller). A multi-point operating-point sweep (run_cyclo_operating_
+% point_sweep.m) requests 2 so the resulting waveforms show a repeated
+% cycle for visual/periodicity inspection. This does not change the
+% loss or harmonic RESULTS: prepare_cyclo_fft_record.m and prepare_
+% cyclo_source_fft_record.m already extract exactly one motor period
+% for their FFT-based calculations regardless of how many periods
+% Voltage.t spans, and calculate_cyclo_converter_losses.m's energy-to-
+% average-power conversion is duration-normalized, so it returns the
+% same average power whether the record covers 1 or N periods.
+if isfield(Input, 'NumberOfPeriods') && ~isempty(Input.NumberOfPeriods)
+    P.numberOfPeriods = Input.NumberOfPeriods;
+else
+    P.numberOfPeriods = 1;
+end
+
 P.numberOfIntervals = ...
     ceil( ...
         P.f1 ...
         / P.f2 ...
-        * P.pulseNumber);
+        * P.pulseNumber) ...
+    * P.numberOfPeriods;
 
 P.samplesPerInterval = ...
     floor( ...
@@ -476,6 +494,15 @@ if mod(P.pulseNumber, 6) ~= 0
     error( ...
         'Cyclo:InvalidPulseNumber', ...
         'Pulse number must be a multiple of six.');
+
+end
+
+if ~isnumeric(P.numberOfPeriods) || ~isscalar(P.numberOfPeriods) || ...
+        P.numberOfPeriods < 1 || P.numberOfPeriods ~= round(P.numberOfPeriods)
+
+    error( ...
+        'Cyclo:InvalidNumberOfPeriods', ...
+        'P.numberOfPeriods must be a positive integer.');
 
 end
 if P.TC ~= round(P.TC) || P.TC < 1
