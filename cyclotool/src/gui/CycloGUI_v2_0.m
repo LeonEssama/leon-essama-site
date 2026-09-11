@@ -3726,9 +3726,19 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
                 round(GH.Sidebands(k).FreqPlus)};
         end
         sidebandTable.Data = SBData;
-        plotABBFrequencyMap();
+        plotABBFrequencyMap(GH);
     end
-    function plotABBFrequencyMap()
+    function plotABBFrequencyMap(GH)
+        %PLOTABBFREQUENCYMAP  Static harmonic/inter-harmonic family map
+        %(unchanged) plus, when GH (a GridHarmonicObjects entry, with
+        %its computed Sidebands) is supplied, an overlay of that exact
+        %operating point's actual computed sideband frequencies --
+        %marker size scaled by Sideband [A] amplitude -- so the plot
+        %reads dynamically from the Sidebands table instead of only
+        %showing the generic full-speed-range family lines.
+        if nargin < 1
+            GH = [];
+        end
         cla(spectrumAx)
         DBase = getBaseDimensioning();
         if isempty(DBase)
@@ -3764,6 +3774,7 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             43 ...
             47 ...
             49 ];
+        ymax = max(Orders) * fL_op * 1.05;
         hold(spectrumAx,'on')
         %% ========================================
         % Plot harmonic families
@@ -3840,6 +3851,41 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
                 'Color',[0 0 0]);
         end
         %% ========================================
+        % Overlay: this operating point's actual computed sidebands
+        % (GH.Sidebands), marker size scaled by Sideband [A] amplitude
+        % -- makes the plot read dynamically from the Sidebands table
+        % instead of only showing the generic full-speed-range family
+        % lines above. All rows (real harmonic orders AND Fixed orders
+        % 2/3/4/6/8/9) share the same x = this point's Speed.
+        %% ========================================
+        if ~isempty(GH) && isfield(GH,'Sidebands') && ~isempty(GH.Sidebands)
+            speedPoint = getResultField(GH,'Speed',NaN);
+            if ~isnan(speedPoint)
+                freqs = [[GH.Sidebands.FreqMinus], [GH.Sidebands.FreqPlus]];
+                amps  = [[GH.Sidebands.CurrentA],  [GH.Sidebands.CurrentA]];
+                xPts  = speedPoint * ones(size(freqs));
+                maxAmp = max(amps);
+                if maxAmp > 0
+                    sizes = 20 + 180 * (amps / maxAmp);
+                else
+                    sizes = 20 * ones(size(amps));
+                end
+                scatter( ...
+                    spectrumAx, xPts, freqs, sizes, ...
+                    [0.85 0.1 0.1], 'filled', ...
+                    'MarkerFaceAlpha', 0.75, ...
+                    'MarkerEdgeColor', [0.4 0 0]);
+                text( ...
+                    spectrumAx, speedPoint, ymax * 0.99, ...
+                    sprintf('%s / %s\n(marker size \\propto Sideband [A])', ...
+                        getResultField(GH,'Point','?'), ...
+                        getResultField(GH,'VoltageCase','?')), ...
+                    'FontSize', 8, 'Color', [0.6 0 0], ...
+                    'HorizontalAlignment', 'center', ...
+                    'VerticalAlignment', 'top');
+            end
+        end
+        %% ========================================
         % Formatting
         %% ========================================
         hold(spectrumAx,'off')
@@ -3859,8 +3905,6 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
         xlim( ...
             spectrumAx,...
             [0 Input.n_max * 1.15]);
-        ymax = ...
-            max(Orders) * fL_op * 1.05;
         ylim( ...
             spectrumAx,...
             [0 ymax]);
