@@ -1,9 +1,26 @@
 function Sweep = run_cyclo_operating_point_sweep( ...
-    Input, R, Thy, numberOfPeriods)
+    Input, R, Thy, numberOfPeriods, progressFcn)
 %RUN_CYCLO_OPERATING_POINT_SWEEP  Detailed cyclo simulation across the
 %tool's standard named speed/voltage operating points.
 %
 %   Sweep = run_cyclo_operating_point_sweep(Input, R, Thy, numberOfPeriods)
+%   Sweep = run_cyclo_operating_point_sweep(Input, R, Thy, numberOfPeriods, progressFcn)
+%
+%   progressFcn (optional, default []): a function handle called twice
+%   per point -- once as the point starts and once as it finishes -- so
+%   a caller (e.g. the GUI) can show which point is currently running
+%   during this otherwise-silent, potentially slow (multi-minute) loop.
+%   Called as progressFcn(info), info a scalar struct with fields:
+%     Phase           'start' | 'done'
+%     Row             1-based point index in this sweep
+%     NumberOfPoints  total number of points (nSpeeds * nVoltages)
+%     SpeedName       e.g. 'MinSpeed'
+%     VoltageName     e.g. 'uLmin'
+%     Sweep           the Sweep struct as built so far (rows 1..Row-1
+%                     fully populated; row Row has Point/VoltageCase/
+%                     Speed/f2/UM_op/IM_op/FieldWeakening/Input set on
+%                     'start', plus Result/Status/ErrorMessage on 'done')
+%   Ignored (never called) when left [].
 %
 %   Runs run_detailed_cyclo_simulation once per (SpeedName, VoltageCase)
 %   combination -- losses, harmonics, and firing-angle/voltage/current
@@ -53,7 +70,10 @@ arguments
     R     (1,1) struct
     Thy   (1,1) struct
     numberOfPeriods (1,1) double {mustBePositive, mustBeInteger} = 2
+    progressFcn = []
 end
+
+hasProgressFcn = ~isempty(progressFcn);
 
 requiredFields = { ...
     'CreepingSpeed', 'InchingSpeed', 'n_min', 'n_nom', 'n_max', ...
@@ -130,6 +150,16 @@ for i = 1:nSpeeds
         Sweep.FieldWeakening(row) = fieldWeakening;
         Sweep.Input{row}          = PointInput;
 
+        if hasProgressFcn
+            progressFcn(struct( ...
+                'Phase', 'start', ...
+                'Row', row, ...
+                'NumberOfPoints', nPoints, ...
+                'SpeedName', SpeedNames{i}, ...
+                'VoltageName', VoltageNames{j}, ...
+                'Sweep', Sweep));
+        end
+
         try
             PointResult = run_detailed_cyclo_simulation(PointInput, R, Thy);
             Sweep.Result{row} = PointResult;
@@ -139,6 +169,16 @@ for i = 1:nSpeeds
             Sweep.Result{row} = [];
             Sweep.Status{row} = 'ERROR';
             Sweep.ErrorMessage{row} = ME.message;
+        end
+
+        if hasProgressFcn
+            progressFcn(struct( ...
+                'Phase', 'done', ...
+                'Row', row, ...
+                'NumberOfPoints', nPoints, ...
+                'SpeedName', SpeedNames{i}, ...
+                'VoltageName', VoltageNames{j}, ...
+                'Sweep', Sweep));
         end
 
     end
