@@ -3527,9 +3527,15 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             else
                 Isb = 0.40 * I5source;
             end
-            Sidebands(rowSB).HarmonicA = I5source;
+            % Order 1 IS the fundamental, so its Harmonic [A]/[%] is the
+            % fundamental grid current itself (GH.IL1, from the Grid
+            % Harmonics calculation), not the raw order-5 source current
+            % -- per user correction. The Sideband [A]/[%] columns (the
+            % actual fL+-6fM sideband amplitude) are unchanged and still
+            % derive from I5source.
+            Sidebands(rowSB).HarmonicA = IL1;
             Sidebands(rowSB).HarmonicPct = ...
-                100 * I5source / IL1;
+                100 * IL1 / IL1;
             Sidebands(rowSB).CurrentA = Isb;
             Sidebands(rowSB).CurrentPct = ...
                 100 * Isb / IL1;
