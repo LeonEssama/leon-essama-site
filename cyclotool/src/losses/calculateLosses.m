@@ -70,6 +70,14 @@ PV_Besch = n_B * (1.75 * Input.fL * Input.CB * ...
     (uLcase * DimResult.Uv0N/N_series * sqrt(2))^2);
 Loss.PV_Besch = PV_Besch;
 
+% Exposed so callers needing the PER-DEVICE loss (e.g. the Water
+% Cooling Design "Thy Loss"/"Resistor Loss" inputs, which are per one
+% thyristor / per one snubber resistor, per cooling-can (KD) branch --
+% not the whole-converter totals PV_Th/PV_Besch above) can divide by
+% them: PV_Th / n_Th and PV_Besch / (n_Th/N_series) respectively.
+Loss.n_Th = n_Th;
+Loss.N_series = N_series;
+
 PV_Zus = 0;
 Loss.PV_Zus = PV_Zus;
 
