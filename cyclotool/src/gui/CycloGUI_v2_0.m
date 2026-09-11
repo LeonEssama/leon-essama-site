@@ -22,7 +22,6 @@ GridResultAll = {};
 GridCaseRowMap = [];
 LossObjects = {};
 LossResults = {};
-LossRowMap = [];
 CharacteristicObjects = {};
 FiringAngleObjects = {};
 ExcitationObjects = {};
@@ -903,16 +902,6 @@ uibutton(...
     'Text','Calculate Losses',...
     'Position',[10 5 180 25],...
     'ButtonPushedFcn',@runLosses);
-uilabel(lossToolbar,...
-    'Text','SC Case',...
-    'Position',[210 5 65 25]);
-lossViewSCDropdown = uidropdown(...
-    lossToolbar,...
-    'Items',{'SCmin','SCmax'},...
-    'Value','SCmin',...
-    'Position',[280 5 100 25]);
-lossViewSCDropdown.ValueChangedFcn = ...
-    @updateLossView;
 tabSidebands = uitab(tg,...
     'Title','Sidebands');
 tabSpectrum = uitab(tg,...
@@ -4076,42 +4065,19 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % -------------------------------------------------
         % Update losses table
         % -------------------------------------------------
+        % No SC Case filter here -- shows every row of the current
+        % operating matrix (both SCmin and SCmax together when "Include
+        % SCmax case" is on), same as before the SC Case view selector
+        % existed. The SCCase column still identifies each row.
         LossResults = Results;
+        lossTable.Data = Results;
         lossTable.CellSelectionCallback = @selectLossCase;
-        % Default the view to whichever case this run's base (row 1) is
-        % -- keeps the SC Case dropdown in sync with what was just run.
-        lossViewSCDropdown.Value = Results{1,10};
-        updateLossView();
-    end
-    function updateLossView(~,~)
-        %UPDATELOSSVIEW  Filter the Losses table down to just the
-        %selected SC Case; alert if that case hasn't been computed.
-        caseName = lossViewSCDropdown.Value;
-        if isempty(LossResults)
-            lossTable.Data = {};
-            LossRowMap = [];
-            return
-        end
-        rows = strcmp(LossResults(:,10), caseName);
-        if ~any(rows)
-            lossTable.Data = {};
-            LossRowMap = [];
-            lossDetailTable.Data = {};
-            alertCaseNotCalculated(caseName);
-            return
-        end
-        lossTable.Data = LossResults(rows,:);
-        LossRowMap = find(rows);
     end
     function selectLossCase(~, event)
         if isempty(event.Indices)
             return
         end
-        pos = event.Indices(1);
-        if pos > numel(LossRowMap)
-            return
-        end
-        row = LossRowMap(pos);
+        row = event.Indices(1);
         if row > numel(LossObjects) || isempty(LossObjects{row})
             return
         end
