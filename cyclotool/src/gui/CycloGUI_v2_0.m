@@ -1186,13 +1186,18 @@ gridViewSCDropdown.ValueChangedFcn = ...
 gridHarmonicDetailTable = uitable(...
     tabGridHarmonics,...
     'Units','normalized',...
-    'Position',[0.74 0.10 0.25 0.82],...
+    'Position',[0.74 0.52 0.25 0.40],...
     'ColumnName',{...
     'Order',...
     'KI [%]',...
     'IL [A]',...
     'ku [%]',...
     'Frequency [Hz]'});
+gridHarmonicIOTable = uitable(...
+    tabGridHarmonics,...
+    'Units','normalized',...
+    'Position',[0.74 0.10 0.25 0.40],...
+    'ColumnName',{'Parameter','Value','Unit'});
 lossTable = uitable(...
     tabLosses,...
     'ColumnName',{...
@@ -1454,6 +1459,7 @@ netzSummaryTable.ColumnWidth = 'auto';
 lossTable.ColumnWidth = 'auto';
 gridHarmonicTable.ColumnWidth = 'auto';
 gridHarmonicDetailTable.ColumnWidth = 'auto';
+gridHarmonicIOTable.ColumnWidth = 'auto';
 %% ==========================================================
 % CALLBACK
 %% ==========================================================
@@ -3396,6 +3402,12 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             % =====================================================
             uLcase = netzMatrixTable.Data{r,12};
             dx = DimResult.dxN / uLcase;
+            % Operating-point input values for this row, kept only for
+            % the Eingabedaten detail breakdown below (not used in any
+            % of the harmonic/sideband formulas themselves).
+            Psh_row = netzMatrixTable.Data{r,4};
+            Speed_row = netzMatrixTable.Data{r,3};
+            UL_row = netzMatrixTable.Data{r,14};
             % =====================================================
             % ABB overlap angle
             % =====================================================
@@ -3454,6 +3466,18 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             GH.aN  = aN;
             GH.u   = u;
             GH.Characteristic = H;
+            % Eingabedaten (input data) for this operating point, for
+            % the detail breakdown table only.
+            GH.Psh        = Psh_row;
+            GH.Speed      = Speed_row;
+            GH.UL         = UL_row;
+            GH.uLcase     = uLcase;
+            GH.SCactive   = SCactive;
+            GH.cosphiL    = cosphiL;
+            GH.PulseNumber = DimInput.PulseNumber;
+            GH.Uv0N       = DimResult.Uv0N;
+            GH.dx         = dx;
+            GH.aN_deg     = aN * 180/pi;
             FixedOrders = [2 3 4 6 8 9];
             FixedCoeff = [
                 0.3
@@ -3641,6 +3665,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             gridHarmonicTable.Data = {};
             GridCaseRowMap = [];
             gridHarmonicDetailTable.Data = {};
+            gridHarmonicIOTable.Data = {};
             sidebandTable.Data = {};
             setDropdownItemsSafely(gridCaseDropdown, {}, 'No Data');
             setDropdownItemsSafely(sidebandCaseDropdown, {}, 'No Data');
@@ -3934,6 +3959,50 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         GH = GridHarmonicObjects{row};
         gridHarmonicDetailTable.Data = ...
             GH.Characteristic;
+        populateGridHarmonicIO(GH);
+    end
+    function populateGridHarmonicIO(GH)
+        %POPULATEGRIDHARMONICIO  Eingabedaten (input data) / Netz-OS
+        %(grid-side current spectrum, IL,1 plus IL at each odd order
+        %already in GH.Characteristic) breakdown for the selected point,
+        %per the user-supplied reference layout. "w" here is the tool's
+        %internal commutation/overlap-angle variable (GH.u, radians) --
+        %shown as-is; no IEC/IEEE per-unit convention for it was
+        %supplied, so no conversion is applied.
+        breakdown = {
+            'Eingabedaten', [],             ''
+            'P(Sh)',        getResultField(GH,'Psh',NaN),         'W'
+            'n',            getResultField(GH,'Speed',NaN),       'rpm'
+            '',             [],             ''
+            'U(L)',         getResultField(GH,'UL',NaN),          'V'
+            'u(L)',         getResultField(GH,'uLcase',NaN),      'pu'
+            'SC(act)',      getResultField(GH,'SCactive',NaN),    'VA'
+            'cos_phiL',     getResultField(GH,'cosphiL',NaN),     ''
+            'p(N)',         getResultField(GH,'PulseNumber',NaN), '-'
+            'U(v0N)',       getResultField(GH,'Uv0N',NaN),        'V'
+            'I(v,1)',       GH.IL1,         'A'
+            'dx(N)',        getResultField(GH,'dx',NaN),          'pu'
+            'a(N)',         getResultField(GH,'aN_deg',NaN),      '°el'
+            'w',            GH.u,           'pu'
+            '',             [],             ''
+            'Netz-OS',      [],             ''
+            };
+        nOrders = size(GH.Characteristic,1);
+        netzOS = cell(nOrders+1,3);
+        netzOS(1,:) = {'IL,1', GH.IL1, 'A'};
+        for k = 1:nOrders
+            netzOS(k+1,:) = { ...
+                sprintf('IL,%d', GH.Characteristic(k,1)), ...
+                GH.Characteristic(k,3), ...
+                'A'};
+        end
+        breakdown = [breakdown; netzOS];
+        eingabeRow = find(strcmp(breakdown(:,1),'Eingabedaten'),1);
+        netzOSRow  = find(strcmp(breakdown(:,1),'Netz-OS'),1);
+        gridHarmonicIOTable.Data = breakdown;
+        removeStyle(gridHarmonicIOTable);
+        addStyle(gridHarmonicIOTable, uistyle('FontWeight','bold'), 'row', eingabeRow);
+        addStyle(gridHarmonicIOTable, uistyle('FontWeight','bold'), 'row', netzOSRow);
     end
     function runLosses(~,~)
         if isempty(NetzOperatingMatrix)
@@ -6811,6 +6880,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         lossDetailTable.Data = {};
         gridHarmonicTable.Data = {};
         gridHarmonicDetailTable.Data = {};
+        gridHarmonicIOTable.Data = {};
         coolingTable.Data = {};
         cla(coolingSweepAx);
         cla(coolingGlycolAx);
