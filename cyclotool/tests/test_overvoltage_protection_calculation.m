@@ -50,12 +50,14 @@ Input.Thy = struct('UDRM', 6500);   % Dimensioning-selected thyristor (see heade
 
 Input.Uv0_stator = 1710;    % workbook D16
 Input.deltaUBOD  = 50;      % workbook D19 = I19
-Input.BOD_Stator = 2600;    % workbook D24
+Input.BOD_Stator = 2600;    % workbook D24 (per-unit; workbook shows a single unstacked BOD)
+Input.BOD_Stator_Count = 1;
 Input.kStator    = 0.805;   % workbook D28
 Input.TKS        = 0.5;     % workbook D29 = I29
 
 Input.Uv0_Rotor = 690;      % workbook I16
-Input.BOD_Rotor = 2000;     % workbook I24
+Input.BOD_Rotor = 2000;     % workbook I24 (per-unit; workbook shows a single unstacked BOD)
+Input.BOD_Rotor_Count = 1;
 Input.kRotor    = 0.813;    % workbook I28
 Input.IeDCmax   = 635;      % workbook I20
 
@@ -81,11 +83,23 @@ check('Thermal_OK', O.Thermal_OK, true, 0);
 check('UBoD_min [V]', O.UBoD_min, 4341.282562597109, TOL*4341.28);
 check('UBoD_max [V]', O.UBoD_max, 5366.666666666667, TOL*5366.67);
 check('BOD_OK (workbook data: selected BOD below required window)', O.BOD_OK, false, 0);
+check('BOD_Stator_Unit [V]', O.BOD_Stator_Unit, 2600, 1e-9);
+check('BOD_Stator_Count [-]', O.BOD_Stator_Count, 1, 1e-9);
 
 %% ===== Stator resistor sizing (workbook D31/D32/D33) =====
 check('RKS [Ohm]', O.RKS, 0.7998547955909542, TOL*0.8);
 check('Ieff [A]', O.Ieff, 1876.7290115251058, TOL*1876.73);
 check('EKS [kWs]', O.EKS, 1408.589, TOL*1408.589);
+
+%% ===== BOD stacking (new feature): 2x2600V passes the window the
+%% workbook's own single 2600V selection fails =====
+Input2 = Input;
+Input2.BOD_Stator_Count = 2;
+O2 = overvoltage_protection_calculation(Input2);
+check('UBoD_selected (2x2600V) [V]', O2.UBoD_selected, 5200, 1e-9);
+check('BOD_OK (2x2600V, now within window)', O2.BOD_OK, true, 0);
+check('RKS (2x2600V) [Ohm]', O2.RKS, 1.5997095911819084, TOL*1.6);
+check('EKS (2x2600V) [kWs]', O2.EKS, 2817.178, TOL*2817.18);
 
 %% ===== Rotor VDRM: calculated, NOT the stator's VDRM_OV -- gap #1 =====
 % (workbook I18 = 2*sqrt(2)*1.32*Uv0_Rotor, independent of D18=6500)
@@ -115,6 +129,20 @@ check('OVThyType (matched class)', O.OVThyType, '4in_6500V', 0);
 check('ITh_zul_Cyclo [A]', O.ITh_zul_Cyclo, 5984.1914161849445, TOL*5984.19);
 check('CycloThermalMargin [A]', O.CycloThermalMargin, 1946.1914161849445, TOL*1946.19);
 check('CycloThermal_OK', O.CycloThermal_OK, true, 0);
+
+%% ===== BOD count validation: non-integer / zero must error, not guess =====
+InputBadCount = Input;
+InputBadCount.BOD_Stator_Count = 0;
+try
+    overvoltage_protection_calculation(InputBadCount);
+    error('CycloTool:TestFailed', 'BOD_Stator_Count=0 should have errored.');
+catch ME
+    if strcmp(ME.identifier, 'overvoltage_protection_calculation:InvalidBODStatorCount')
+        fprintf('  OK    BOD_Stator_Count=0 correctly rejected\n');
+    else
+        rethrow(ME);
+    end
+end
 
 fprintf('All overvoltage_protection_calculation tests passed.\n');
 

@@ -52,6 +52,12 @@ function O = overvoltage_protection_calculation(Input)
 %
 %   Required Input fields include Thy (the struct selected in
 %   Dimensioning; must have UDRM) -- see calculate.m / ThyristorDatabase.m.
+%
+%   BOD elements may be stacked in series (e.g. 2x2600V) via
+%   Input.BOD_Stator_Count / Input.BOD_Rotor_Count (positive integers,
+%   default 1): the total U(BoD) checked against [UBoD_min, UBoD_max] is
+%   BOD_Stator_Count * Input.BOD_Stator (and likewise for rotor), not the
+%   per-unit catalog voltage alone.
 
 if Input.Rth_jc_05s == 0
     error('overvoltage_protection_calculation:ZeroRth', ...
@@ -65,6 +71,16 @@ if isempty(Input.Thy) || ~isfield(Input.Thy, 'UDRM')
     error('overvoltage_protection_calculation:NoThyristor', ...
         ['Input.Thy must be the Dimensioning-selected thyristor struct ', ...
          '(with a UDRM field) -- run Dimensioning first.']);
+end
+if Input.BOD_Stator_Count < 1 || mod(Input.BOD_Stator_Count,1) ~= 0
+    error('overvoltage_protection_calculation:InvalidBODStatorCount', ...
+        'Input.BOD_Stator_Count must be a positive integer (got %g).', ...
+        Input.BOD_Stator_Count);
+end
+if Input.BOD_Rotor_Count < 1 || mod(Input.BOD_Rotor_Count,1) ~= 0
+    error('overvoltage_protection_calculation:InvalidBODRotorCount', ...
+        'Input.BOD_Rotor_Count must be a positive integer (got %g).', ...
+        Input.BOD_Rotor_Count);
 end
 
 O = struct();
@@ -92,10 +108,15 @@ O.uLmax = 2 - Input.u_L;
 %% =====================================================
 O.VDRM_Stator = Input.Thy.UDRM;
 
+% Stacked BOD elements: total U(BoD) = BOD Count x per-unit voltage
+% (e.g. 2x2600V). Must fall within [UBoD_min, UBoD_max].
+O.BOD_Stator_Unit  = Input.BOD_Stator;
+O.BOD_Stator_Count = Input.BOD_Stator_Count;
+
 [O.UBoD_min, O.UBoD_max, O.UBoD_selected, O.BOD_OK, ...
     O.BOD_MarginLow, O.BOD_MarginHigh] = bodWindow( ...
     O.uLmax, Input.Uv0_stator, O.VDRM_Stator, ...
-    Input.deltaUBOD, Input.BOD_Stator);
+    Input.deltaUBOD, Input.BOD_Stator * Input.BOD_Stator_Count);
 
 O.RKS  = O.UBoD_selected / (Input.kStator * Input.IMmax_OV);
 O.Ieff = Input.kStator * Input.IMmax_OV / sqrt(3);
@@ -109,9 +130,13 @@ O.EKS  = (Input.kStator * Input.IMmax_OV)^2 * Input.TKS * O.RKS / 3000;
 % header.
 O.VDRM_Rotor_calc = 2 * sqrt(2) * 1.32 * Input.Uv0_Rotor;
 
+% Stacked BOD elements, same as stator -- see above.
+O.BOD_Rotor_Unit  = Input.BOD_Rotor;
+O.BOD_Rotor_Count = Input.BOD_Rotor_Count;
+
 [O.UBoD_min_Rotor, O.UBoD_max_Rotor, O.UBoD_selected_Rotor, O.BOD_OK_Rotor] = ...
     bodWindow(O.uLmax, Input.Uv0_Rotor, O.VDRM_Rotor_calc, ...
-    Input.deltaUBOD, Input.BOD_Rotor);
+    Input.deltaUBOD, Input.BOD_Rotor * Input.BOD_Rotor_Count);
 
 O.RKS_Rotor  = O.UBoD_selected_Rotor / (Input.kRotor * Input.IeDCmax);
 O.Ieff_Rotor = Input.kRotor * Input.IeDCmax / sqrt(3);
