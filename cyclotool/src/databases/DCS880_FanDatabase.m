@@ -97,16 +97,14 @@ FanDB = [ ...
         'Power_Y', NaN, 'Current_Y', NaN, 'BlockingCurrent_Y', NaN) ...
     ];
 
-%% Validation: warn (do not error -- see H3/H4 note above) if a DCS880
-%% frame size in the field database has no matching fan entry at all,
-%% for any listed frequency.
-FieldDB = DCS880_FieldDatabase();
-missingSizes = setdiff(unique({FieldDB.Size}), unique({FanDB.Size}));
-if ~isempty(missingSizes)
-    warning('DCS880_FanDatabase:MissingSize', ...
-        ['No fan entry for frame size(s): %s. Not present in the ' ...
-         'reference workbook either; excitation_calculation.m reports ' ...
-         '''N/A'' rather than guessing a fan.'], strjoin(missingSizes, ', '));
-end
+%% No blanket "missing size" warning here: DCS880_FieldDatabase lists
+%% frame sizes (H3, H4) that permanently have no fan entry, by design --
+%% see the header note above. Warning unconditionally on every call
+%% (every excitation_calculation() run, whether or not the design
+%% actually selects H3/H4) would just be noise. The relevant,
+%% context-aware warning already exists where it belongs: excitation_
+%% calculation.m's sizeExcitationChain() only warns (via R.FanWarning /
+%% E.Warning) when a design's OWN DCS880 selection actually lands on a
+%% Size/Frequency combination this table has no entry for.
 
 end

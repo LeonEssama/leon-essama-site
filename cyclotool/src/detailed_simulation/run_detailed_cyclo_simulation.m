@@ -1,7 +1,18 @@
-function Test = test_detailed_cyclo_stage5(Input, R, Thy)
-%TEST_DETAILED_CYCLO_STAGE5
-% Test bridge states, individual thyristor currents,
-% converter-group input currents, and transformer currents.
+function Test = run_detailed_cyclo_simulation(Input, R, Thy)
+%RUN_DETAILED_CYCLO_SIMULATION  Stage 1-5 detailed cycloconverter
+%simulation: bridge states, individual thyristor currents,
+%converter-group input currents, and transformer currents.
+%
+%   Despite the "Stage 5 test" report headers below (left as originally
+%   written -- they describe simulation stages, not a pass/fail unit
+%   test), this is the real engine behind the GUI's "Detailed
+%   Simulation" button (CycloGUI_v2_0/runDetailedSimulation), not a
+%   matlab.unittest test. Moved here from tests/test_detailed_cyclo_
+%   stage5.m: living in tests/ meant it was unreachable from the GUI
+%   under the documented `addpath(genpath('src'))` workflow (README.md),
+%   and being picked up by `runtests('tests')` as if it were a
+%   zero-argument test (it requires Input/R/Thy) would have errored
+%   that run too.
 
 %% =========================================================
 % Stage 1: Prepare parameters
