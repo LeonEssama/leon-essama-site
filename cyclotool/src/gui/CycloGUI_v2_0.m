@@ -473,6 +473,11 @@ TausConvMax = addField( ...
     'Taus Conv [°C]',...
     48.3,...
     235);
+TausConvMax.Tooltip = [ ...
+    'Max. Thy&R cooling outlet temperature. Controlled by "Loads ', ...
+    'Source" on the Water Cooling Design panel below: Manual (type ', ...
+    'directly) or Automatic (derived as max T(W,ein) from Operating ', ...
+    'Point, read-only).'];
 
 uilabel(thermalPanel,...
     'Text','Bypass',...
@@ -494,7 +499,26 @@ BypassEnabled = uidropdown(...
 
 coolingDesignPanel = uipanel(tabThermal,...
     'Title','Water Cooling Design',...
-    'Position',[10 190 500 220]);
+    'Position',[10 150 500 260]);
+
+uilabel(coolingDesignPanel,...
+    'Text','Loads Source',...
+    'Position',[10 205 130 22]);
+
+CoolingLoadsMode = uidropdown(...
+    coolingDesignPanel,...
+    'Items',{'Automatic (from Losses/Operating Point)','Manual'},...
+    'Value','Manual',...
+    'Position',[210 205 260 22]);
+CoolingLoadsMode.Tooltip = [ ...
+    'Manual: type Thy/Resistor/Converter Loss and Taus Conv directly. ', ...
+    'Automatic: derives them from the latest results -- Thy Loss = ', ...
+    'max PV(Th), Resistor Loss = max PV(Besch), Converter Loss = max ', ...
+    'PV(Wasser) (all from Losses, across every operating point and SC ', ...
+    'case), Taus Conv = max T(W,ein) (from Operating Point) -- and ', ...
+    'makes those four fields read-only. Requires Losses (with ', ...
+    'Cooling = Water) and Operating Point to have been run first.'];
+CoolingLoadsMode.ValueChangedFcn = @(~,~) updateCoolingLoadsEstimate();
 
 uilabel(coolingDesignPanel,...
     'Text','6-pulse Fuses',...
@@ -1259,15 +1283,21 @@ sidebandCaseDropdown.ValueChangedFcn = ...
     @updateSidebandDetail;
 characteristicTable = uitable(...
     tabCharacteristic,...
-    'Position',[20 20 650 250],...
+    'Units','normalized',...
+    'Position',[0.02 0.02 0.30 0.50],...
     'ColumnName',{...
     'Parameter',...
     'n min',...
     'uL*nNom',...
     'nNom',...
     'nMax'});
+% Normalized units (not the fixed-pixel Position other elements on this
+% tab use) so the plot always fills nearly the whole available tab
+% width/height regardless of window size -- previously a fixed
+% 820x650px box that left the legend/curves/value labels cramped.
 charAx = uiaxes(tabCharacteristic,...
-    'Position',[700 80 820 650]);
+    'Units','normalized',...
+    'Position',[0.34 0.02 0.64 0.96]);
 title(charAx,...
     'Motor Characteristic');
 grid(charAx,'on');
@@ -1789,6 +1819,8 @@ coolingSweepTable.ColumnWidth = 'auto';
         else
             Input.CoolingConverterType = "18-pulse";
         end
+        Input.CoolingLoadsMode = ...
+            CoolingLoadsMode.Value;
         Input.ThyristorCoolingLoss_kW = ...
             ThyristorCoolingLoss.Value;
         Input.ResistorCoolingLoss_kW = ...
@@ -2232,6 +2264,49 @@ coolingSweepTable.ColumnWidth = 'auto';
             maxTein_C = max(Teins);
         end
     end
+    function updateCoolingLoadsEstimate()
+        %UPDATECOOLINGLOADSESTIMATE  Keep the Water Cooling Design loss/
+        %temperature inputs (Thy Loss, Resistor Loss, Converter Loss,
+        %Taus Conv) consistent with CoolingLoadsMode. Automatic derives
+        %them from the latest Losses/Operating Point results and makes
+        %the four fields read-only; Manual leaves them editable, at
+        %whatever value the user last set -- same pattern as LsMode/
+        %updateLsEstimate() for the Ls field. If Automatic is selected
+        %but the required results aren't available yet, alerts and
+        %reverts the mode back to Manual instead of leaving read-only
+        %fields showing stale/wrong values.
+        if strcmpi(CoolingLoadsMode.Value,'Manual')
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+            return
+        end
+        [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+            getMaxConverterLossesForCooling();
+        maxTein_C = getMaxTeinForCooling();
+        if isempty(maxPVTh_kW) || isempty(maxTein_C)
+            uialert(fig, [ ...
+                'Automatic needs Losses (run with Cooling = Water) and ', ...
+                'Operating Point results to derive the Water Cooling ', ...
+                'Design inputs -- run those first. Reverted to Manual.'], ...
+                'No Data');
+            CoolingLoadsMode.Value = 'Manual';
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+            return
+        end
+        ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
+        ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
+        ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
+        TausConvMax.Value          = round(maxTein_C,1);
+        ThyristorCoolingLoss.Editable = 'off';
+        ResistorCoolingLoss.Editable  = 'off';
+        ConverterCoolingLoss.Editable = 'off';
+        TausConvMax.Editable          = 'off';
+    end
     function runCooling(~,~)
         %RUNCOOLING
         % Water-cooling design: calculate_cyclo_water_cooling.m
@@ -2245,36 +2320,42 @@ coolingSweepTable.ColumnWidth = 'auto';
             Thy = DB(idx);
             % Auto-derive the Water Cooling Design loss/temperature
             % inputs from the already-computed Losses/Operating Point
-            % results, per user direction: Thy Loss = max PV(Th),
-            % Resistor Loss = max PV(Besch), Converter Loss = max
-            % PV(Wasser) (all from calculateLosses.m, across every
-            % operating point and SC case), Taus Conv = max T(W,ein)
-            % (from the Operating Point calculation).
-            [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
-                getMaxConverterLossesForCooling();
-            if isempty(maxPVTh_kW)
-                uialert(fig, [ ...
-                    'Run Losses first (with Cooling = Water) -- the ', ...
-                    'Water Cooling Design inputs (Thy Loss, Resistor ', ...
-                    'Loss, Converter Loss) are derived from the ', ...
-                    'computed PV(Th)/PV(Besch)/PV(Wasser) results.'], ...
-                    'No Data');
-                return
+            % results when CoolingLoadsMode = Automatic (Thy Loss = max
+            % PV(Th), Resistor Loss = max PV(Besch), Converter Loss =
+            % max PV(Wasser), all from calculateLosses.m across every
+            % operating point and SC case; Taus Conv = max T(W,ein)
+            % from Operating Point). In Manual mode, the four fields
+            % keep whatever value the user typed -- skip this block
+            % entirely.
+            if strcmpi(CoolingLoadsMode.Value,'Automatic (from Losses/Operating Point)')
+                [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+                    getMaxConverterLossesForCooling();
+                if isempty(maxPVTh_kW)
+                    uialert(fig, [ ...
+                        'Run Losses first (with Cooling = Water) -- ', ...
+                        'the Water Cooling Design inputs (Thy Loss, ', ...
+                        'Resistor Loss, Converter Loss) are derived ', ...
+                        'from the computed PV(Th)/PV(Besch)/PV(Wasser) ', ...
+                        'results in Automatic mode.'], ...
+                        'No Data');
+                    return
+                end
+                maxTein_C = getMaxTeinForCooling();
+                if isempty(maxTein_C)
+                    uialert(fig, [ ...
+                        'Run Operating Point first (with Cooling = ', ...
+                        'Water) -- the Water Cooling Design "Taus ', ...
+                        'Conv" input is derived from the computed ', ...
+                        'T(W,ein) (water inlet temperature) results ', ...
+                        'in Automatic mode.'], ...
+                        'No Data');
+                    return
+                end
+                ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
+                ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
+                ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
+                TausConvMax.Value          = round(maxTein_C,1);
             end
-            maxTein_C = getMaxTeinForCooling();
-            if isempty(maxTein_C)
-                uialert(fig, [ ...
-                    'Run Operating Point first (with Cooling = Water) ', ...
-                    '-- the Water Cooling Design "Taus Conv" input is ', ...
-                    'derived from the computed T(W,ein) (water inlet ', ...
-                    'temperature) results.'], ...
-                    'No Data');
-                return
-            end
-            ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
-            ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
-            ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
-            TausConvMax.Value          = round(maxTein_C,1);
 
             Input = buildInput(Thy);
 
@@ -6782,6 +6863,37 @@ coolingSweepTable.ColumnWidth = 'auto';
         Taus_max.Value = P.Taus_max;
         GlycolPercent.Value = P.GlycolPercent;
         TausConvMax.Value = P.TausConvMax;
+        if isfield(P,'ThyristorCoolingLoss_kW')
+            ThyristorCoolingLoss.Value = P.ThyristorCoolingLoss_kW;
+        end
+        if isfield(P,'ResistorCoolingLoss_kW')
+            ResistorCoolingLoss.Value = P.ResistorCoolingLoss_kW;
+        end
+        if isfield(P,'ConverterCoolingLoss_kW')
+            ConverterCoolingLoss.Value = P.ConverterCoolingLoss_kW;
+        end
+        if isfield(P,'CoolingLoadsMode')
+            CoolingLoadsMode.Value = P.CoolingLoadsMode;
+        else
+            CoolingLoadsMode.Value = 'Manual';
+        end
+        % Restore the Editable state matching the restored mode
+        % directly (not via updateCoolingLoadsEstimate(), which would
+        % alert/revert to Manual here since LossObjects/Operating Point
+        % results are not part of a saved project) -- the field VALUES
+        % above are already the ones saved under whichever mode was
+        % active, so just re-apply the matching read-only state.
+        if strcmpi(CoolingLoadsMode.Value,'Manual')
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+        else
+            ThyristorCoolingLoss.Editable = 'off';
+            ResistorCoolingLoss.Editable  = 'off';
+            ConverterCoolingLoss.Editable = 'off';
+            TausConvMax.Editable          = 'off';
+        end
         %% =====================================================
         % EXCITATION
         %% =====================================================
@@ -6957,11 +7069,15 @@ coolingSweepTable.ColumnWidth = 'auto';
 
         CoolingFuseVariant.Value = 'Off';
 
+        CoolingLoadsMode.Value = 'Manual';
+
         ThyristorCoolingLoss.Value = 5.7;
 
         ResistorCoolingLoss.Value = 14.3;
 
         ConverterCoolingLoss.Value = 210;
+
+        updateCoolingLoadsEstimate();
 
         %% ==========================================
         % Protection
