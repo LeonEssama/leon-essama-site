@@ -2353,6 +2353,22 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             Case.I1S_used = I1SH;
             Study{5} = calculate(Case);
             %% ===================================================
+            % Operating Point table display fields
+            %% ===================================================
+            % aN for this table is always the reference 90 deg firing
+            % angle, not Input.a_Nmin (the minimum commutation-margin
+            % angle calculate.m uses internally for dxN) -- fixed for
+            % every point. I1S shown is always I1Snom (the dimensioning
+            % result's nominal system current), the same reference value
+            % for every point including the Peak cases, not each case's
+            % own I1S_used (I1SH for Peak, which calculate.m still uses
+            % internally for those cases' own thermal/current results --
+            % only the displayed I1S row is pinned to I1Snom).
+            for k = 1:5
+                Study{k}.aN_display = 90;
+                Study{k}.I1S_display = I1Snom;
+            end
+            %% ===================================================
             % Store study
             %% ===================================================
             if strcmp(choice,'SCmin')
@@ -2472,8 +2488,18 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             end
 
             Data{11,c+1} = round(R.IM_used,1);
-            Data{12,c+1} = round(rad2deg(R.aN),2);
-            Data{13,c+1} = round(R.I1S,1);
+            % aN_display/I1S_display guarded for projects saved before
+            % these two Operating Point table rows existed.
+            if isfield(R,'aN_display')
+                Data{12,c+1} = R.aN_display;
+            else
+                Data{12,c+1} = [];
+            end
+            if isfield(R,'I1S_display')
+                Data{13,c+1} = round(R.I1S_display,1);
+            else
+                Data{13,c+1} = [];
+            end
 
         end
 

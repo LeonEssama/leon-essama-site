@@ -199,7 +199,6 @@ R.I1S_used = I1S_used;
 R.IM_used  = IM_used;
 R.uL_used  = uL_used;
 R.I1S      = I1S_used;   % Actual operating-point system current
-R.aN       = aN;         % Input.a_Nmin [rad], echoed for traceability
 
 R.Id_DBeff_used  = IM_used / sqrt(2);
 R.Id_DBpeak_used = sqrt(2) * IM_used;
