@@ -11,13 +11,16 @@ function test_busbar_check()
 %   machine current, frequency and altitude differ between cases 1 and 2.
 %
 %   TEST DESIGN NOTE
-%     Cases 3 and 4 assert on RETURNED VALUES and provenance strings, not
-%     on warning identifiers. An earlier version asserted via lastwarn and
-%     was wrong twice over: warning('off', id) suppresses the warning
-%     entirely so lastwarn is never set, and even when enabled lastwarn
-%     holds only the MOST RECENT warning, which busbar_check overwrites
-%     with busbar_check:PaintRequired. Asserting on warning plumbing tests
-%     MATLAB rather than the calculation.
+%     Every case asserts on RETURNED VALUES (including B.PaintRequired/
+%     B.PaintRequiredNote, Case 2) and provenance strings, never on
+%     warning identifiers or lastwarn(). An earlier version asserted via
+%     lastwarn and was wrong twice over: warning('off', id) suppresses
+%     the warning entirely so lastwarn is never set, and even when
+%     enabled lastwarn holds only the MOST RECENT warning. Asserting on
+%     warning plumbing tests MATLAB rather than the calculation --
+%     busbar_check.m no longer raises a warning for the paint-required
+%     case at all, precisely so a repeated caller (the GUI's auto-
+%     refresh on every Dimensioning run) does not spam the console.
 
 TOL = 1e-6;
 fprintf('--- busbar_check regression test ---\n');
@@ -40,6 +43,8 @@ check('bare  Reserve [pu]', B1.Bare.Reserve_pu, ...
      1.130927292000855;  1.4569603851902908], TOL);
 
 assert(all(B1.Bare.OK), 'Case 1: every bare section should pass at 930 m.');
+assert(~B1.PaintRequired && isempty(B1.PaintRequiredNote), ...
+    'Case 1: PaintRequired should be false (every bare section passes).');
 assert(abs(B1.Currents.f_motor_Hz - 7) < TOL, ...
     'Case 1: f_motor should be 7.00 Hz.');
 assert(all(B1.Bare.Band == "< 16 Hz" | B1.Bare.Band == "> 20 Hz"), ...
@@ -54,13 +59,16 @@ In2 = struct('IM', 2555.5555555555557, 'u_L', 1, 'n_nom', 12, ...
              'PolePairs', 30, 'fL', 50, 'Altitude', 4400);
 % f_motor = 30 * 12 / 60 = 6.00 Hz, matching workbook cell C14
 
-% busbar_check warns that one section fails bare but passes painted. That
-% is the correct result for this project and is asserted below, so the
-% warning is silenced here to keep the test output readable.
-wState = warning('off', 'busbar_check:PaintRequired');
-restoreWarn = onCleanup(@() warning(wState));
-
 B2 = busbar_check(In2, 'Location', 'indoor', 'k5', 0.86);
+
+% One section fails bare but passes painted -- the correct result for
+% this project. Returned as B.PaintRequired/B.PaintRequiredNote, not
+% raised via warning(), so nothing needs silencing here.
+assert(B2.PaintRequired, ...
+    'Case 2: PaintRequired should be true (bare fails, painted passes).');
+assert(~isempty(B2.PaintRequiredNote), ...
+    'Case 2: PaintRequiredNote should be a non-empty advisory string.');
+fprintf('  PASS  case 2: PaintRequired/PaintRequiredNote set correctly\n');
 
 check('paint I_max   [A] ', B2.Painted.I_max_A, ...
     [3698.86; 3510.8542510121456; 3698.86; 3128.4990347490343; ...
