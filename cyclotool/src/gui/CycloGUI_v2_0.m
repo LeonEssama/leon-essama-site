@@ -3409,11 +3409,18 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             Speed_row = netzMatrixTable.Data{r,3};
             UL_row = netzMatrixTable.Data{r,14};
             % =====================================================
-            % ABB overlap angle
+            % Overlap angle w -- fixed per explicit user instruction at
+            % w = 0.1 pu (10%) for every point/SC case, no longer
+            % derived from aN/dx via the ABB overlap-angle formula.
+            % "pu" here is taken as a fraction of the pi rad (180 elec.
+            % deg) half-cycle reference already used for firing angles
+            % in this tool -- this is an engineering interpretation of
+            % the per-unit base, not a value cited by any IEC/IEEE
+            % standard or the reference VBA (neither defines a per-unit
+            % convention for the overlap/commutation angle).
             % =====================================================
-            acosArg = cos(aN) - 2*dx;
-            acosArg = max(min(acosArg,1),-1);
-            u = acos(acosArg) - aN;
+            w_pu = 0.1;
+            u = w_pu * pi;
             % =====================================================
             % Harmonic spectrum
             % =====================================================
@@ -3478,6 +3485,7 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             GH.Uv0N       = DimResult.Uv0N;
             GH.dx         = dx;
             GH.aN_deg     = aN * 180/pi;
+            GH.w_pu       = w_pu;
             FixedOrders = [2 3 4 6 8 9];
             FixedCoeff = [
                 0.3
@@ -3965,10 +3973,10 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
         %POPULATEGRIDHARMONICIO  Eingabedaten (input data) / Netz-OS
         %(grid-side current spectrum, IL,1 plus IL at each odd order
         %already in GH.Characteristic) breakdown for the selected point,
-        %per the user-supplied reference layout. "w" here is the tool's
-        %internal commutation/overlap-angle variable (GH.u, radians) --
-        %shown as-is; no IEC/IEEE per-unit convention for it was
-        %supplied, so no conversion is applied.
+        %per the user-supplied reference layout. "w" is the fixed
+        %overlap angle w = 0.1 pu now used for every point/SC case (see
+        %runGridHarmonics -- an engineering interpretation of the
+        %per-unit base, not an IEC/IEEE-cited value).
         breakdown = {
             'Eingabedaten', [],             ''
             'P(Sh)',        getResultField(GH,'Psh',NaN),         'W'
@@ -3983,7 +3991,7 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             'I(v,1)',       GH.IL1,         'A'
             'dx(N)',        getResultField(GH,'dx',NaN),          'pu'
             'a(N)',         getResultField(GH,'aN_deg',NaN),      '°el'
-            'w',            GH.u,           'pu'
+            'w',            getResultField(GH,'w_pu',NaN),         'pu'
             '',             [],             ''
             'Netz-OS',      [],             ''
             };
