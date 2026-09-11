@@ -1204,8 +1204,7 @@ lossTable = uitable(...
     'TransformerLoss [W]',...
     'ConverterLoss [W]',...
     'TotalLoss [W]',...
-    'Pin [W]',...
-    'SCCase'});
+    'Pin [W]'});
 lossTable.Units = 'normalized';
 lossTable.Position = [0.01 0.48 0.98 0.44];
 lossDetailTable = uitable(...
@@ -4091,12 +4090,21 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % -------------------------------------------------
         % Update losses table
         % -------------------------------------------------
-        % No SC Case filter here -- shows every row of the current
-        % operating matrix (both SCmin and SCmax together when "Include
-        % SCmax case" is on), same as before the SC Case view selector
-        % existed. The SCCase column still identifies each row.
-        LossResults = Results;
-        lossTable.Data = Results;
+        % Loss.* never depends on GridSCC (grid short-circuit power) --
+        % calculateLosses() takes Speed/Psh/IM/Uv0N/uLcase, none of which
+        % differ between the SCmin and SCmax rows for the same operating
+        % point -- so the SCmin and SCmax blocks of Results are numeric
+        % duplicates of each other. Show only the base block (the first
+        % 12 rows, always SCmin -- generateNetzMatrix() always emits
+        % 'SCmin' first) so the table is always 12 rows with no SCCase
+        % column, while LossObjects/Results (both SC cases' worth of
+        % rows when "Include SCmax case" is on) stay complete internally
+        % for Netzbelastung, which DOES need a per-row, per-case solved
+        % u_M/u_Lstar (GridSCC enters solveUM/calculateNetzIL1 there).
+        baseCase = Results{1,10};
+        displayRows = strcmp(Results(:,10), baseCase);
+        LossResults = Results(displayRows, 1:9);
+        lossTable.Data = LossResults;
         lossTable.CellSelectionCallback = @selectLossCase;
     end
     function selectLossCase(~, event)
