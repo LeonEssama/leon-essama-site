@@ -1,0 +1,119 @@
+function test_overvoltage_protection_calculation()
+%TEST_OVERVOLTAGE_PROTECTION_CALCULATION  Regression test for
+%overvoltage_protection_calculation against the reference workbook's own
+%example (user-supplied "Atalaya_Kurzschliesser.xlsx", sheet "SAG Mill",
+%project "Atalaya SAG Mill 23'000 kW").
+%
+%   Confirms the two gaps found in the original implementation are now
+%   covered:
+%     1. Rotor BOD-window VDRM is calculated (workbook I18, 2*sqrt(2)*
+%        1.32*Uv0_Rotor), not the stator's manually selected VDRM_OV.
+%     2. The "Dauergrenzstrom des Cyclo-Thyristors" continuous-current
+%        check for the main/cyclo converter thyristor (workbook rows
+%        37-47) is implemented, keyed by Input.OVThyType against
+%        OV_ThyristorDatabase.
+%
+%   Crowbar-thyristor thermal check (Rth_jc_05s/DeltaTheta/VT0_OV/rT_OV)
+%   uses the workbook's "D" column (deltaTheta=85 K) -- the workbook has
+%   no explicit pass/fail formula for this check, so this test only
+%   verifies the ITh_zul VALUE against the workbook's own D12 cell.
+%
+%   The stator BOD check FAILS in this example (selected BOD 2600 V is
+%   below the workbook's own required window [4341.3, 5366.7] V) -- this
+%   is the reference workbook's own data, not a tool defect, and is
+%   asserted here as such.
+
+TOL = 1e-3;   % 0.1% relative
+fprintf('--- overvoltage_protection_calculation regression test (reference workbook example) ---\n');
+
+Input = struct();
+Input.Rth_jc_05s = 0.018;
+Input.DeltaTheta = 85;      % workbook D7 ("D" column)
+Input.VT0_OV     = 1.1;
+Input.rT_OV      = 0.00057;
+Input.IMmax_OV   = 4038;    % workbook D10
+
+Input.uLmax_OV  = 1.05;     % workbook D17 = I17
+Input.Uv0_stator = 1710;    % workbook D16
+Input.VDRM_OV    = 6500;    % workbook D18 (stator: manually selected/catalog)
+Input.deltaUBOD  = 50;      % workbook D19 = I19
+Input.BOD_Stator = 2600;    % workbook D24
+Input.kStator    = 0.805;   % workbook D28
+Input.TKS        = 0.5;     % workbook D29 = I29
+
+Input.Uv0_Rotor = 690;      % workbook I16
+Input.BOD_Rotor = 2000;     % workbook I24
+Input.kRotor    = 0.813;    % workbook I28
+Input.IeDCmax   = 635;      % workbook I20
+
+Input.startup  = 1.5;       % workbook D51 (Hochlauf)
+Input.overload = 1;         % workbook D50 (Ueberlast)
+Input.u_L      = 0.95;      % workbook D52 (uL,min)
+Input.IM       = 2692;      % workbook D49 (IM1)
+Input.PolePairs = 36;       % workbook I49
+Input.nc_OV     = 0.3;      % workbook I50
+
+Input.OVThyType = '4in_5200V';   % workbook C39:E45 "D" column (VDRM=5200)
+
+O = overvoltage_protection_calculation(Input);
+
+%% ===== Crowbar thyristor thermal limit (workbook C12/D12, D13) =====
+check('ITh_zul [A]', O.ITh_zul, 2070.817631413717, TOL*2070.82);
+check('IMmax_half [A]', O.IMmax_half, 2019, 1e-9);
+check('Thermal_OK', O.Thermal_OK, true, 0);
+
+%% ===== Stator BOD window (workbook D22/D23) -- FAILS in this example =====
+check('UBoD_min [V]', O.UBoD_min, 4341.282562597109, TOL*4341.28);
+check('UBoD_max [V]', O.UBoD_max, 5366.666666666667, TOL*5366.67);
+check('BOD_OK (workbook data: selected BOD below required window)', O.BOD_OK, false, 0);
+
+%% ===== Stator resistor sizing (workbook D31/D32/D33) =====
+check('RKS [Ohm]', O.RKS, 0.7998547955909542, TOL*0.8);
+check('Ieff [A]', O.Ieff, 1876.7290115251058, TOL*1876.73);
+check('EKS [kWs]', O.EKS, 1408.589, TOL*1408.589);
+
+%% ===== Rotor VDRM: calculated, NOT the stator's VDRM_OV -- gap #1 =====
+% (workbook I18 = 2*sqrt(2)*1.32*Uv0_Rotor, independent of D18=6500)
+check('VDRM_Rotor_calc [V]', O.VDRM_Rotor_calc, 2576.1314252188304, TOL*2576.13);
+check('UBoD_min_Rotor [V]', O.UBoD_min_Rotor, 1781.5701568374297, TOL*1781.57);
+check('UBoD_max_Rotor [V]', O.UBoD_max_Rotor, 2096.776187682359, TOL*2096.78);
+check('BOD_OK_Rotor', O.BOD_OK_Rotor, true, 0);
+
+%% ===== Rotor resistor sizing (workbook I31/I32/I33) =====
+check('RKS_Rotor [Ohm]', O.RKS_Rotor, 3.8740544885763817, TOL*3.874);
+check('Ieff_Rotor [A]', O.Ieff_Rotor, 298.05996322049026, TOL*298.06);
+check('EKS_Rotor [kWs]', O.EKS_Rotor, 172.08499999999998, TOL*172.085);
+
+%% ===== Protective settings / Schutzblock (workbook D54-D59, G51/G54/G55) =====
+check('IGA [A]', O.IGA, 5710.594364862559, TOL*5710.59);
+check('IGB [A]', O.IGB, 4007.4346420088127, TOL*4007.43);
+check('IGmax [A]', O.IGmax, 5710.594364862559, TOL*5710.59);
+check('I115 [A]', O.I115, 6567.183519591942, TOL*6567.18);
+check('I135 [A]', O.I135, 7709.302392564455, TOL*7709.30);
+check('ILimit [A]', O.ILimit, 4038, 1e-9);
+check('fc [Hz]', O.fc, 0.18, 1e-9);
+check('Tc2 [s]', O.Tc2, 2.7777777777777777, TOL*2.78);
+
+%% ===== Dauergrenzstrom des Cyclo-Thyristors -- gap #2 (workbook D47) =====
+check('ITh_zul_Cyclo [A]', O.ITh_zul_Cyclo, 6936.016458282812, TOL*6936.02);
+check('CycloThermalMargin [A]', O.CycloThermalMargin, 2898.016458282812, TOL*2898.02);
+check('CycloThermal_OK', O.CycloThermal_OK, true, 0);
+
+fprintf('All overvoltage_protection_calculation tests passed.\n');
+
+end
+
+%% ==========================================================
+function check(label, actual, expected, tol)
+if islogical(actual) || islogical(expected)
+    if logical(actual) ~= logical(expected)
+        error('CycloTool:TestFailed', '%s mismatch: got %d, expected %d', ...
+            label, actual, expected);
+    end
+elseif abs(actual - expected) > tol
+    error('CycloTool:TestFailed', ...
+        '%s mismatch: got %.6g, expected %.6g (tol %.3g)', ...
+        label, actual, expected, tol);
+end
+fprintf('  OK    %s\n', label);
+end
