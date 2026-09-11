@@ -2301,10 +2301,15 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             % CASE 1
             % RMS uLmin
             %% ===================================================
+            % Undervoltage/field-weakening operating point: at reduced
+            % voltage (uLmin < 1) the motor needs more current for the
+            % same power, so IM_used here is IM_uL = IM/uLmin (the same
+            % formula calculate.m computes into R.IM_uL), not the plain
+            % nominal IM used for the other RMS cases.
             Case = Input;
             Case.Mode = 'rms';
             Case.uL_used = uLmin;
-            Case.IM_used = IMnom;
+            Case.IM_used = IMnom / uLmin;
             Case.I1S_used = I1Snom;
             Study{1} = calculate(Case);
             %% ===================================================
@@ -2379,11 +2384,11 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
     end
     function refreshOperatingPointMatrix()
 
-        if isempty(OperatingPointStudySCmin)
-            return
-        end
-
-        if isempty(OperatingPointStudySCmax)
+        % Show whichever case(s) have actually been computed -- SCmin
+        % alone right after its own study, updating to include SCmax's
+        % columns once that study is also run, instead of waiting for
+        % both before showing anything.
+        if isempty(OperatingPointStudySCmin) && isempty(OperatingPointStudySCmax)
             return
         end
 
@@ -2399,22 +2404,38 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         'T(W,ein)'
         'T(KD,mitt)'
         'T(W,aus)'
+        'IM used [A]'
+        'aN [deg]'
+        'I1S [A]'
 
         };
+        nRows = numel(Rows);
 
-        Data = cell(10,11);
+        Data = cell(nRows,11);
 
-        for r = 1:10
+        for r = 1:nRows
             Data{r,1} = Rows{r};
         end
 
-        AllResults = [ ...
-            OperatingPointStudySCmin ...
-            OperatingPointStudySCmax];
+        EmptyBlock = cell(1,5);
+        if isempty(OperatingPointStudySCmin)
+            SCminBlock = EmptyBlock;
+        else
+            SCminBlock = OperatingPointStudySCmin;
+        end
+        if isempty(OperatingPointStudySCmax)
+            SCmaxBlock = EmptyBlock;
+        else
+            SCmaxBlock = OperatingPointStudySCmax;
+        end
+        AllResults = [SCminBlock, SCmaxBlock];
 
         for c = 1:10
 
             R = AllResults{c};
+            if isempty(R)
+                continue
+            end
 
             if c <= 3
 
@@ -2450,6 +2471,10 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                 Data{10,c+1} = [];
             end
 
+            Data{11,c+1} = round(R.IM_used,1);
+            Data{12,c+1} = round(rad2deg(R.aN),2);
+            Data{13,c+1} = round(R.I1S,1);
+
         end
 
         operatingPointTable.Data = Data;
@@ -2463,6 +2488,9 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         for c = 1:10
 
             R = AllResults{c};
+            if isempty(R)
+                continue
+            end
 
             Thy = R.Thy;
 
@@ -2495,13 +2523,6 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
                     [5 c+1]);
 
             end
-        end
-        for c = 1:10
-
-            R = AllResults{c};
-
-            Thy = R.Thy;
-
         end
     end
     function runHarmonics(~,~)
