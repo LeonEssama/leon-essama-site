@@ -473,6 +473,11 @@ TausConvMax = addField( ...
     'Taus Conv [°C]',...
     48.3,...
     235);
+TausConvMax.Tooltip = [ ...
+    'Max. Thy&R cooling outlet temperature. Controlled by "Loads ', ...
+    'Source" on the Water Cooling Design panel below: Manual (type ', ...
+    'directly) or Automatic (derived as max T(W,ein) from Operating ', ...
+    'Point, read-only).'];
 
 uilabel(thermalPanel,...
     'Text','Bypass',...
@@ -494,7 +499,26 @@ BypassEnabled = uidropdown(...
 
 coolingDesignPanel = uipanel(tabThermal,...
     'Title','Water Cooling Design',...
-    'Position',[10 190 500 220]);
+    'Position',[10 150 500 260]);
+
+uilabel(coolingDesignPanel,...
+    'Text','Loads Source',...
+    'Position',[10 205 130 22]);
+
+CoolingLoadsMode = uidropdown(...
+    coolingDesignPanel,...
+    'Items',{'Automatic (from Losses/Operating Point)','Manual'},...
+    'Value','Manual',...
+    'Position',[210 205 260 22]);
+CoolingLoadsMode.Tooltip = [ ...
+    'Manual: type Thy/Resistor/Converter Loss and Taus Conv directly. ', ...
+    'Automatic: derives them from the latest results -- Thy Loss = ', ...
+    'max PV(Th), Resistor Loss = max PV(Besch), Converter Loss = max ', ...
+    'PV(Wasser) (all from Losses, across every operating point and SC ', ...
+    'case), Taus Conv = max T(W,ein) (from Operating Point) -- and ', ...
+    'makes those four fields read-only. Requires Losses (with ', ...
+    'Cooling = Water) and Operating Point to have been run first.'];
+CoolingLoadsMode.ValueChangedFcn = @(~,~) updateCoolingLoadsEstimate();
 
 uilabel(coolingDesignPanel,...
     'Text','6-pulse Fuses',...
@@ -1259,15 +1283,21 @@ sidebandCaseDropdown.ValueChangedFcn = ...
     @updateSidebandDetail;
 characteristicTable = uitable(...
     tabCharacteristic,...
-    'Position',[20 20 650 250],...
+    'Units','normalized',...
+    'Position',[0.02 0.02 0.30 0.50],...
     'ColumnName',{...
     'Parameter',...
     'n min',...
     'uL*nNom',...
     'nNom',...
     'nMax'});
+% Normalized units (not the fixed-pixel Position other elements on this
+% tab use) so the plot always fills nearly the whole available tab
+% width/height regardless of window size -- previously a fixed
+% 820x650px box that left the legend/curves/value labels cramped.
 charAx = uiaxes(tabCharacteristic,...
-    'Position',[700 80 820 650]);
+    'Units','normalized',...
+    'Position',[0.34 0.02 0.64 0.96]);
 title(charAx,...
     'Motor Characteristic');
 grid(charAx,'on');
@@ -1789,6 +1819,8 @@ coolingSweepTable.ColumnWidth = 'auto';
         else
             Input.CoolingConverterType = "18-pulse";
         end
+        Input.CoolingLoadsMode = ...
+            CoolingLoadsMode.Value;
         Input.ThyristorCoolingLoss_kW = ...
             ThyristorCoolingLoss.Value;
         Input.ResistorCoolingLoss_kW = ...
@@ -2183,21 +2215,27 @@ coolingSweepTable.ColumnWidth = 'auto';
             '-';
             };
     end
-    function [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+    function [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW, ...
+            srcPVTh, srcPVBesch, srcPVWasser] = ...
             getMaxConverterLossesForCooling()
         %GETMAXCONVERTERLOSSESFORCOOLING  Max PV(Th)/PV(Besch)/
-        %PV(Wasser) [W] across every LossObjects entry (all operating
-        %points, both SC cases when "Include SCmax case" is on),
-        %converted to kW -- feeds the Water Cooling Design "Thy Loss"/
-        %"Resistor Loss"/"Converter Loss" inputs. Returns [] for all
-        %three if Losses hasn't been run yet. PV(Wasser) is 0 for every
-        %row unless Losses was last run with Cooling = Water
-        %(calculateLosses.m's air-cooled branch always sets it to 0),
-        %so Losses should be (re-)run with Cooling = Water immediately
-        %before Cooling design.
+        %PV(Wasser) [W] across every LossObjects entry -- every RMS
+        %operating point (both SC cases when "Include SCmax case" is
+        %on) AND every Peak case (Peak uLmin/Peak 1.0, both SC cases
+        %when both have been run) -- converted to kW, plus a "Point /
+        %VoltageCase" label identifying which entry each max came from
+        %(so the Cooling tab can mark the governing case). Returns []/
+        %'' for everything if Losses hasn't been run yet. PV(Wasser) is
+        %0 for every row unless Losses was last run with Cooling =
+        %Water (calculateLosses.m's air-cooled branch always sets it to
+        %0), so Losses should be (re-)run with Cooling = Water
+        %immediately before Cooling design.
         maxPVTh_kW = [];
         maxPVBesch_kW = [];
         maxPVWasser_kW = [];
+        srcPVTh = '';
+        srcPVBesch = '';
+        srcPVWasser = '';
         if isempty(LossObjects)
             return
         end
@@ -2206,31 +2244,102 @@ coolingSweepTable.ColumnWidth = 'auto';
             return
         end
         L = [LossObjects{valid}];
-        maxPVTh_kW     = max([L.PV_Th])     / 1000;
-        maxPVBesch_kW  = max([L.PV_Besch])  / 1000;
-        maxPVWasser_kW = max([L.PV_Wasser]) / 1000;
+        [maxPVThW, iTh]         = max([L.PV_Th]);
+        [maxPVBeschW, iBesch]   = max([L.PV_Besch]);
+        [maxPVWasserW, iWasser] = max([L.PV_Wasser]);
+        maxPVTh_kW     = maxPVThW     / 1000;
+        maxPVBesch_kW  = maxPVBeschW  / 1000;
+        maxPVWasser_kW = maxPVWasserW / 1000;
+        srcPVTh     = describeLossSource(L(iTh));
+        srcPVBesch  = describeLossSource(L(iBesch));
+        srcPVWasser = describeLossSource(L(iWasser));
     end
-    function maxTein_C = getMaxTeinForCooling()
+    function s = describeLossSource(L)
+        %DESCRIBELOSSSOURCE  "Point / VoltageCase" label for a
+        %LossObjects entry, for marking which case drove a Cooling
+        %design max.
+        if isfield(L,'Point') && isfield(L,'VoltageCase')
+            s = sprintf('%s / %s', L.Point, L.VoltageCase);
+        else
+            s = '(unknown)';
+        end
+    end
+    function [maxTein_C, srcTein] = getMaxTeinForCooling()
         %GETMAXTEINFORCOOLING  Max T(W,ein) [deg C] (water inlet
         %temperature required by the thyristor/snubber thermal solve)
-        %across every Operating Point Study case (both SC cases when
-        %both have been run) -- feeds the Water Cooling Design "Taus
-        %Conv" input. Returns [] if no valid T(W,ein) is available. A
-        %Study case run with Cooling = Air has Tein = NaN
-        %(calculate_thyristor_thermal.m only computes it for Water) and
-        %is ignored here.
+        %across every Operating Point Study case (RMS uLmin/1.0/uLmax
+        %and Peak uLmin/1.0, both SC cases when both have been run) --
+        %feeds the Water Cooling Design "Taus Conv" input, plus a label
+        %identifying which case the max came from. Returns []/'' if no
+        %valid T(W,ein) is available. A Study case run with Cooling =
+        %Air has Tein = NaN (calculate_thyristor_thermal.m only
+        %computes it for Water) and is ignored here.
         maxTein_C = [];
+        srcTein = '';
+        CaseNames = {'RMS uLmin','RMS 1.0','RMS uLmax','Peak uLmin','Peak 1.0'};
         AllStudy = [OperatingPointStudySCmin, OperatingPointStudySCmax];
-        Teins = [];
+        bestTein = -Inf;
+        bestLabel = '';
         for k = 1:numel(AllStudy)
             R = AllStudy{k};
-            if ~isempty(R) && isfield(R,'Tein') && ~isnan(R.Tein)
-                Teins(end+1) = R.Tein; %#ok<AGROW>
+            if ~isempty(R) && isfield(R,'Tein') && ~isnan(R.Tein) && R.Tein > bestTein
+                bestTein = R.Tein;
+                caseIdx = mod(k-1,5) + 1;
+                if k <= numel(OperatingPointStudySCmin)
+                    scLabel = 'SCmin';
+                else
+                    scLabel = 'SCmax';
+                end
+                bestLabel = sprintf('%s (%s)', CaseNames{caseIdx}, scLabel);
             end
         end
-        if ~isempty(Teins)
-            maxTein_C = max(Teins);
+        if bestTein > -Inf
+            maxTein_C = bestTein;
+            srcTein = bestLabel;
         end
+    end
+    function updateCoolingLoadsEstimate()
+        %UPDATECOOLINGLOADSESTIMATE  Keep the Water Cooling Design loss/
+        %temperature inputs (Thy Loss, Resistor Loss, Converter Loss,
+        %Taus Conv) consistent with CoolingLoadsMode. Automatic derives
+        %them from the latest Losses/Operating Point results and makes
+        %the four fields read-only; Manual leaves them editable, at
+        %whatever value the user last set -- same pattern as LsMode/
+        %updateLsEstimate() for the Ls field. If Automatic is selected
+        %but the required results aren't available yet, alerts and
+        %reverts the mode back to Manual instead of leaving read-only
+        %fields showing stale/wrong values.
+        if strcmpi(CoolingLoadsMode.Value,'Manual')
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+            return
+        end
+        [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+            getMaxConverterLossesForCooling();
+        maxTein_C = getMaxTeinForCooling();
+        if isempty(maxPVTh_kW) || isempty(maxTein_C)
+            uialert(fig, [ ...
+                'Automatic needs Losses (run with Cooling = Water) and ', ...
+                'Operating Point results to derive the Water Cooling ', ...
+                'Design inputs -- run those first. Reverted to Manual.'], ...
+                'No Data');
+            CoolingLoadsMode.Value = 'Manual';
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+            return
+        end
+        ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
+        ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
+        ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
+        TausConvMax.Value          = round(maxTein_C,1);
+        ThyristorCoolingLoss.Editable = 'off';
+        ResistorCoolingLoss.Editable  = 'off';
+        ConverterCoolingLoss.Editable = 'off';
+        TausConvMax.Editable          = 'off';
     end
     function runCooling(~,~)
         %RUNCOOLING
@@ -2245,36 +2354,46 @@ coolingSweepTable.ColumnWidth = 'auto';
             Thy = DB(idx);
             % Auto-derive the Water Cooling Design loss/temperature
             % inputs from the already-computed Losses/Operating Point
-            % results, per user direction: Thy Loss = max PV(Th),
-            % Resistor Loss = max PV(Besch), Converter Loss = max
-            % PV(Wasser) (all from calculateLosses.m, across every
-            % operating point and SC case), Taus Conv = max T(W,ein)
-            % (from the Operating Point calculation).
-            [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
-                getMaxConverterLossesForCooling();
-            if isempty(maxPVTh_kW)
-                uialert(fig, [ ...
-                    'Run Losses first (with Cooling = Water) -- the ', ...
-                    'Water Cooling Design inputs (Thy Loss, Resistor ', ...
-                    'Loss, Converter Loss) are derived from the ', ...
-                    'computed PV(Th)/PV(Besch)/PV(Wasser) results.'], ...
-                    'No Data');
-                return
+            % results when CoolingLoadsMode = Automatic (Thy Loss = max
+            % PV(Th), Resistor Loss = max PV(Besch), Converter Loss =
+            % max PV(Wasser), all from calculateLosses.m across every
+            % operating point, Peak case and SC case; Taus Conv = max
+            % T(W,ein) from Operating Point). In Manual mode, the four
+            % fields keep whatever value the user typed -- skip this
+            % block entirely.
+            isAutomatic = strcmpi(CoolingLoadsMode.Value, ...
+                'Automatic (from Losses/Operating Point)');
+            srcPVTh = ''; srcPVBesch = ''; srcPVWasser = ''; srcTein = '';
+            if isAutomatic
+                [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW, ...
+                    srcPVTh, srcPVBesch, srcPVWasser] = ...
+                    getMaxConverterLossesForCooling();
+                if isempty(maxPVTh_kW)
+                    uialert(fig, [ ...
+                        'Run Losses first (with Cooling = Water) -- ', ...
+                        'the Water Cooling Design inputs (Thy Loss, ', ...
+                        'Resistor Loss, Converter Loss) are derived ', ...
+                        'from the computed PV(Th)/PV(Besch)/PV(Wasser) ', ...
+                        'results in Automatic mode.'], ...
+                        'No Data');
+                    return
+                end
+                [maxTein_C, srcTein] = getMaxTeinForCooling();
+                if isempty(maxTein_C)
+                    uialert(fig, [ ...
+                        'Run Operating Point first (with Cooling = ', ...
+                        'Water) -- the Water Cooling Design "Taus ', ...
+                        'Conv" input is derived from the computed ', ...
+                        'T(W,ein) (water inlet temperature) results ', ...
+                        'in Automatic mode.'], ...
+                        'No Data');
+                    return
+                end
+                ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
+                ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
+                ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
+                TausConvMax.Value          = round(maxTein_C,1);
             end
-            maxTein_C = getMaxTeinForCooling();
-            if isempty(maxTein_C)
-                uialert(fig, [ ...
-                    'Run Operating Point first (with Cooling = Water) ', ...
-                    '-- the Water Cooling Design "Taus Conv" input is ', ...
-                    'derived from the computed T(W,ein) (water inlet ', ...
-                    'temperature) results.'], ...
-                    'No Data');
-                return
-            end
-            ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
-            ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
-            ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
-            TausConvMax.Value          = round(maxTein_C,1);
 
             Input = buildInput(Thy);
 
@@ -2294,6 +2413,18 @@ coolingSweepTable.ColumnWidth = 'auto';
                 calculate_cyclo_water_cooling(CoolingInput);
 
             populateCoolingResults(CoolingResult);
+            if isAutomatic
+                % Mark which operating point/case governs each
+                % Automatic-derived loss/temperature input -- e.g. a
+                % Peak case, if that turns out to run hotter than every
+                % RMS operating point.
+                coolingTable.Data = [coolingTable.Data; {
+                    'Thy Loss Source',       srcPVTh,     '-'
+                    'Resistor Loss Source',  srcPVBesch,  '-'
+                    'Converter Loss Source', srcPVWasser, '-'
+                    'Taus Conv Source',      srcTein,     '-'
+                    }];
+            end
 
             %% Flow sweep plot (Cooling design C26:J26) -- "Water Flow
             % and Pressure Drop": converter pressure drop (left axis)
@@ -4416,8 +4547,108 @@ coolingSweepTable.ColumnWidth = 'auto';
             Loss.IL1ABB = targetIL1;
             Loss.IL1Netz = NetzCheck.IL1;
             Loss.SCCase = SCCase;
+            Loss.Point = Point;
+            Loss.VoltageCase = VoltageCase;
             LossObjects{r,1} = Loss;
         end
+        nRMSRows = size(Data,1);
+        % -------------------------------------------------
+        % Peak-case losses: the RMS-based operating matrix above has no
+        % "Peak" concept -- Peak uLmin/Peak 1.0 only exist as Operating
+        % Point Study cases 4/5 (calculate.m run with Mode='peak',
+        % IM_used=IM_start). Add one Losses row per Peak case, per SC
+        % case actually present in the current matrix, per user
+        % instruction:
+        %   - IM_used = that SC case's own IM_start (Dcase.Result.
+        %     IM_start), not the nominal Input.IM the RMS rows use.
+        %   - PVSch = that SC case's own Operating Point Study{4}/{5}.
+        %     PVS, reused directly (the RMS rows above re-solve PVS
+        %     because they sweep uLcase/IM across an operating matrix
+        %     the Peak Study does not cover).
+        %   - Speed/Psh = that SC case's nominal n_nom/Psh, matching
+        %     the Peak Study cases themselves, which are not
+        %     speed-swept (same convention as the RMS BaseSpeed rows).
+        % Unlike the RMS rows (numerically identical across SC cases,
+        % since they always use the SCmin-baseline D), Peak rows
+        % genuinely differ per SC case: IM_start/PVS both come from
+        % that case's own independently-dimensioned Operating Point
+        % Study. So the displayed Point is suffixed "(SCmin)"/"(SCmax)"
+        % to disambiguate (both in the table and for selectLossCase()
+        % matching below), instead of silently collapsing to one case
+        % like the RMS rows' display does.
+        PeakSCCaseNames = unique(Data(:,17),'stable');
+        PeakVoltageNames = {'uLmin','1.0'};
+        PeakResults = cell(2*numel(PeakSCCaseNames),10);
+        PeakLossObjects = cell(2*numel(PeakSCCaseNames),1);
+        prow = 0;
+        for s = 1:numel(PeakSCCaseNames)
+            SCName = PeakSCCaseNames{s};
+            if strcmp(SCName,'SCmax')
+                Dcase = [];
+                for kk = numel(DimensioningObjects):-1:1
+                    if strcmp(DimensioningObjects{kk}.Case,'SCmax')
+                        Dcase = DimensioningObjects{kk};
+                        break
+                    end
+                end
+                StudyCase = OperatingPointStudySCmax;
+            else
+                Dcase = D;
+                StudyCase = OperatingPointStudySCmin;
+            end
+            if isempty(Dcase)
+                uialert(fig, [ ...
+                    'No ' SCName ' dimensioning available -- needed ', ...
+                    'for the Peak-case Losses rows (IM_start).'], ...
+                    'No Data');
+                return
+            end
+            if numel(StudyCase) < 5 || isempty(StudyCase{4}) || isempty(StudyCase{5})
+                uialert(fig, [ ...
+                    'Run Operating Point for ' SCName ' first -- the ', ...
+                    'Peak uLmin/Peak 1.0 Losses rows need its Study ', ...
+                    'cases 4/5 (IM_start, PVSch).'], ...
+                    'No Data');
+                return
+            end
+            PeakPointLabel = sprintf('Peak (%s)', SCName);
+            for k = 4:5
+                prow = prow + 1;
+                VoltageCase = PeakVoltageNames{k-3};
+                if k == 4
+                    uLcase_peak = Dcase.Input.u_L;
+                else
+                    uLcase_peak = 1.0;
+                end
+                InputCase = Dcase.Input;
+                InputCase.IM = Dcase.Result.IM_start;
+                DimResultCase = Dcase.Result;
+                DimResultCase.PVS = StudyCase{k}.PVS;
+                Speed_peak = Dcase.Input.n_nom;
+                Psh_peak = Dcase.Result.Psh;
+                Loss = calculateLosses( ...
+                    InputCase, DimResultCase, Dcase.Thy, ...
+                    Speed_peak, uLcase_peak, Psh_peak, Psh_peak);
+                Loss.SCCase = SCName;
+                Loss.Point = PeakPointLabel;
+                Loss.VoltageCase = VoltageCase;
+                PeakResults(prow,:) = {
+                    PeakPointLabel
+                    VoltageCase
+                    round(Loss.PV_Th,0)
+                    round(Loss.PV_Besch,0)
+                    round(Loss.Machine,0)
+                    round(Loss.Transformer,0)
+                    round(Loss.Converter,0)
+                    round(Loss.Total,0)
+                    round(Loss.Pin,0)
+                    SCName
+                    };
+                PeakLossObjects{prow,1} = Loss;
+            end
+        end
+        Results = [Results; PeakResults];
+        LossObjects = [LossObjects; PeakLossObjects];
         % -------------------------------------------------
         % Update operating matrix
         % -------------------------------------------------
@@ -4426,20 +4657,21 @@ coolingSweepTable.ColumnWidth = 'auto';
         % -------------------------------------------------
         % Update losses table
         % -------------------------------------------------
-        % Loss.* never depends on GridSCC (grid short-circuit power) --
-        % calculateLosses() takes Speed/Psh/IM/Uv0N/uLcase, none of which
-        % differ between the SCmin and SCmax rows for the same operating
-        % point -- so the SCmin and SCmax blocks of Results are numeric
-        % duplicates of each other. Show only the base block (the first
-        % 12 rows, always SCmin -- generateNetzMatrix() always emits
-        % 'SCmin' first) so the table is always 12 rows with no SCCase
-        % column, while LossObjects/Results (both SC cases' worth of
-        % rows when "Include SCmax case" is on) stay complete internally
-        % for Netzbelastung, which DOES need a per-row, per-case solved
-        % u_M/u_Lstar (GridSCC enters solveUM/calculateNetzIL1 there).
-        baseCase = Results{1,10};
-        displayRows = strcmp(Results(:,10), baseCase);
-        LossResults = Results(displayRows, 1:9);
+        % Loss.* for the RMS rows never depends on GridSCC (grid
+        % short-circuit power) -- calculateLosses() takes Speed/Psh/IM/
+        % Uv0N/uLcase, none of which differ between the SCmin and SCmax
+        % RMS rows for the same operating point -- so the SCmin and
+        % SCmax RMS blocks of Results are numeric duplicates of each
+        % other. Show only the base RMS block (the first 12 rows,
+        % always SCmin -- generateNetzMatrix() always emits 'SCmin'
+        % first) plus every Peak row (which DOES genuinely differ per
+        % SC case, see above), while LossObjects/Results stay complete
+        % internally (both RMS SC-case blocks) for Netzbelastung, which
+        % needs a per-row, per-case solved u_M/u_Lstar.
+        RMSResults = Results(1:nRMSRows,:);
+        baseCase = RMSResults{1,10};
+        displayRMS = strcmp(RMSResults(:,10), baseCase);
+        LossResults = [RMSResults(displayRMS,1:9); PeakResults(:,1:9)];
         lossTable.Data = LossResults;
         lossTable.CellSelectionCallback = @selectLossCase;
     end
@@ -4448,10 +4680,23 @@ coolingSweepTable.ColumnWidth = 'auto';
             return
         end
         row = event.Indices(1);
-        if row > numel(LossObjects) || isempty(LossObjects{row})
+        if row > size(LossResults,1)
             return
         end
-        populateLossDetail(LossObjects{row});
+        % Match by identity (Point/VoltageCase), not positional index:
+        % the displayed table (SCmin RMS block + all Peak rows) is not
+        % in the same order/count as LossObjects (which also holds the
+        % SCmax RMS block when present).
+        targetPoint = LossResults{row,1};
+        targetVoltage = LossResults{row,2};
+        for k = 1:numel(LossObjects)
+            L = LossObjects{k};
+            if ~isempty(L) && isfield(L,'Point') && ...
+                    strcmp(L.Point,targetPoint) && strcmp(L.VoltageCase,targetVoltage)
+                populateLossDetail(L);
+                return
+            end
+        end
     end
     function populateLossDetail(Loss)
         % Curated PV breakdown, per the VBA Verlustrechnung (MEGADRIVE-
@@ -6782,6 +7027,37 @@ coolingSweepTable.ColumnWidth = 'auto';
         Taus_max.Value = P.Taus_max;
         GlycolPercent.Value = P.GlycolPercent;
         TausConvMax.Value = P.TausConvMax;
+        if isfield(P,'ThyristorCoolingLoss_kW')
+            ThyristorCoolingLoss.Value = P.ThyristorCoolingLoss_kW;
+        end
+        if isfield(P,'ResistorCoolingLoss_kW')
+            ResistorCoolingLoss.Value = P.ResistorCoolingLoss_kW;
+        end
+        if isfield(P,'ConverterCoolingLoss_kW')
+            ConverterCoolingLoss.Value = P.ConverterCoolingLoss_kW;
+        end
+        if isfield(P,'CoolingLoadsMode')
+            CoolingLoadsMode.Value = P.CoolingLoadsMode;
+        else
+            CoolingLoadsMode.Value = 'Manual';
+        end
+        % Restore the Editable state matching the restored mode
+        % directly (not via updateCoolingLoadsEstimate(), which would
+        % alert/revert to Manual here since LossObjects/Operating Point
+        % results are not part of a saved project) -- the field VALUES
+        % above are already the ones saved under whichever mode was
+        % active, so just re-apply the matching read-only state.
+        if strcmpi(CoolingLoadsMode.Value,'Manual')
+            ThyristorCoolingLoss.Editable = 'on';
+            ResistorCoolingLoss.Editable  = 'on';
+            ConverterCoolingLoss.Editable = 'on';
+            TausConvMax.Editable          = 'on';
+        else
+            ThyristorCoolingLoss.Editable = 'off';
+            ResistorCoolingLoss.Editable  = 'off';
+            ConverterCoolingLoss.Editable = 'off';
+            TausConvMax.Editable          = 'off';
+        end
         %% =====================================================
         % EXCITATION
         %% =====================================================
@@ -6957,11 +7233,15 @@ coolingSweepTable.ColumnWidth = 'auto';
 
         CoolingFuseVariant.Value = 'Off';
 
+        CoolingLoadsMode.Value = 'Manual';
+
         ThyristorCoolingLoss.Value = 5.7;
 
         ResistorCoolingLoss.Value = 14.3;
 
         ConverterCoolingLoss.Value = 210;
+
+        updateCoolingLoadsEstimate();
 
         %% ==========================================
         % Protection
