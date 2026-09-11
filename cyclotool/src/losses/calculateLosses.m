@@ -7,15 +7,15 @@ function Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh, PshNo
 %     - Converter losses: thyristor conduction/switching + snubber losses
 %     - Machine losses: ABB current/voltage/friction-windage split,
 %       scaled by speed ratio and operating point (uLcase, Speed vs.
-%       nominal) exactly as in the original ABB loss model. The
-%       current-dependent (copper/I^2R) component uses the FIXED
-%       nominal shaft power PshNom, not the per-operating-point Psh --
-%       constant-torque/constant-current assumption below base speed,
-%       per user-reported correction: MachineCurrent must equal its
-%       BaseSpeed/uL=1 value at every point except where field
-%       weakening (Speed>=n_nom & uLcase<1) explicitly scales it by
-%       1/uLcase. The voltage-dependent and friction/windage components
-%       are unchanged and still scale from the per-point Psh.
+%       nominal) exactly as in the original ABB loss model. All three
+%       components (current/voltage/friction-windage) use the FIXED
+%       nominal shaft power PshNom as their base, not the
+%       per-operating-point Psh -- constant-torque assumption below
+%       base speed, per user-reported correction: each component must
+%       equal its BaseSpeed/uL=1 value at every point except where its
+%       own speed-ratio/uLcase scaling factor explicitly changes it
+%       (Creeping/MinSpeed for voltage/friction-windage; field weakening,
+%       Speed>=n_nom & uLcase<1, for all three).
 %     - Transformer losses: no-load + load losses scaled by uLcase^2
 %     - Air/water cooling split (PV_Luft/PV_Wasser/PV_TotRes), per the
 %       MEGADRIVE-CYCLO VBA (Verlustrechnung, P. Burmeister, 2000):
@@ -99,16 +99,16 @@ Loss.PV_TotRes = PV_Luft + PV_Wasser;
 % ABB Machine Loss Model
 %% -------------------------------------------------
 etaM = Input.eta_M;
-PmachineNominal = Psh * (1/etaM - 1);
-% Fixed nominal reference for the current-dependent component only --
-% see the function header. Independent of this row's (possibly
-% speed-reduced) Psh.
+% Fixed nominal reference for all three machine-loss components -- see
+% the function header. Independent of this row's (possibly
+% speed-reduced) Psh; the row-varying speed/voltage scaling is applied
+% explicitly below instead.
 PmachineNominalRated = PshNom * (1/etaM - 1);
 
 % ABB fixed split of nominal machine losses
 PcurrentBase = 0.30 * PmachineNominalRated;
-PvoltageBase = 0.50 * PmachineNominal;
-PfwBase      = 0.20 * PmachineNominal;
+PvoltageBase = 0.50 * PmachineNominalRated;
+PfwBase      = 0.20 * PmachineNominalRated;
 
 speedRatio = Speed / Input.n_nom;
 
