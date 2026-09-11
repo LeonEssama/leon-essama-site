@@ -3573,20 +3573,25 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
                 h  = Fixed(k,1);
                 Ih = Fixed(k,3);
                 fh = Fixed(k,5);
+                % Fixed orders (2,3,4,6,8,9) are ALREADY a defined
+                % percentage of IL1 (Ih = IL1*FixedCoeff/100, per user
+                % correction) -- Harmonic [A]/[%] must equal that value
+                % directly, not have the isTrapez sideband-amplitude
+                % factor (0.60/0.25) applied again on top of it. Only
+                % the Sideband [A]/[%] columns (the fL+-6fM modulation
+                % amplitude) use that factor.
                 if isTrapez
-                    HarmonicA = 0.60 * Ih;
                     SidebandA = 0.25 * Ih;
                 else
-                    HarmonicA = 0.25 * Ih;
                     SidebandA = 0.50 * Ih;
                 end
                 rowSB = rowSB + 1;
                 Sidebands(rowSB).Point = Point;
                 Sidebands(rowSB).VoltageCase = VoltageCase;
                 Sidebands(rowSB).Order = h;
-                Sidebands(rowSB).HarmonicA = HarmonicA;
+                Sidebands(rowSB).HarmonicA = Ih;
                 Sidebands(rowSB).HarmonicPct = ...
-                    100 * HarmonicA / IL1;
+                    100 * Ih / IL1;
                 Sidebands(rowSB).CurrentA = SidebandA;
                 Sidebands(rowSB).CurrentPct = ...
                     100 * SidebandA / IL1;
