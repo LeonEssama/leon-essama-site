@@ -2218,11 +2218,17 @@ coolingSweepTable.ColumnWidth = 'auto';
     function [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW, ...
             srcPVTh, srcPVBesch, srcPVWasser] = ...
             getMaxConverterLossesForCooling()
-        %GETMAXCONVERTERLOSSESFORCOOLING  Max PV(Th)/PV(Besch)/
-        %PV(Wasser) [W] across every LossObjects entry -- every RMS
-        %operating point (both SC cases when "Include SCmax case" is
-        %on) AND every Peak case (Peak uLmin/Peak 1.0, both SC cases
-        %when both have been run) -- converted to kW, plus a "Point /
+        %GETMAXCONVERTERLOSSESFORCOOLING  Max PER-DEVICE PV(Th)/PV(Besch)
+        %[W] -- PV(Th)/n_Th and PV(Besch)/(n_Th/N_series), per user
+        %instruction, since the Water Cooling Design "Thy Loss"/
+        %"Resistor Loss" inputs are the loss of ONE thyristor / ONE
+        %snubber resistor per cooling-can (KD) branch, not the
+        %whole-converter totals PV_Th/PV_Besch calculateLosses.m
+        %returns -- and max PV(Wasser) [W] (already a whole-converter
+        %total, not divided) -- across every LossObjects entry: every
+        %RMS operating point (both SC cases when "Include SCmax case"
+        %is on) AND every Peak case (Peak uLmin/Peak 1.0, both SC cases
+        %when both have been run). Converted to kW, plus a "Point /
         %VoltageCase" label identifying which entry each max came from
         %(so the Cooling tab can mark the governing case). Returns []/
         %'' for everything if Losses hasn't been run yet. PV(Wasser) is
@@ -2254,12 +2260,18 @@ coolingSweepTable.ColumnWidth = 'auto';
             if isempty(L)
                 continue
             end
-            if L.PV_Th > bestTh
-                bestTh = L.PV_Th;
+            % n_Th/N_series guarded (default 1, i.e. no division) for a
+            % LossObjects entry computed before these fields existed.
+            n_Th_L = getResultField(L,'n_Th',1);
+            N_series_L = getResultField(L,'N_series',1);
+            PV_Th_perDevice = L.PV_Th / n_Th_L;
+            PV_Besch_perDevice = L.PV_Besch / (n_Th_L / N_series_L);
+            if PV_Th_perDevice > bestTh
+                bestTh = PV_Th_perDevice;
                 srcPVTh = describeLossSource(L);
             end
-            if L.PV_Besch > bestBesch
-                bestBesch = L.PV_Besch;
+            if PV_Besch_perDevice > bestBesch
+                bestBesch = PV_Besch_perDevice;
                 srcPVBesch = describeLossSource(L);
             end
             if L.PV_Wasser > bestWasser

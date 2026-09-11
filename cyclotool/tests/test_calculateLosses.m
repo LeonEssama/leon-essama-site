@@ -47,6 +47,12 @@ Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh, PshNom);
 
 check('PV_Besch [W]', Loss.PV_Besch, 24938.55, TOL*24938.55);
 
+%% ===== n_Th/N_series (exposed for the Water Cooling Design per-device
+% Thy Loss/Resistor Loss derivation: PV_Th/n_Th, PV_Besch/(n_Th/N_series))
+% PulseNumber=12 -> n_DB=12, n_Th=6*12=72, N_series=12/6=2.
+check('n_Th [-]', Loss.n_Th, 72, 1e-9);
+check('N_series [-]', Loss.N_series, 2, 1e-9);
+
 %% ===== Air/Water cooling split (VBA Verlustrechnung, minus the PV_3GL
 % and PV_Si terms this tool has no inputs for) =============================
 PV_Th_expected = 71300.58136268196;
