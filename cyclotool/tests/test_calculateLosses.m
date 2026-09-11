@@ -41,8 +41,9 @@ Thy.rT  = 2.9e-4;
 Speed  = 10;
 uLcase = 0.95;
 Psh    = 703400;
+PshNom = 703400;   % Speed == n_nom here, so PshNom == Psh for this case
 
-Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh);
+Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh, PshNom);
 
 check('PV_Besch [W]', Loss.PV_Besch, 24938.55, TOL*24938.55);
 
@@ -61,33 +62,62 @@ check('PV_TotRes (Water-cooled) [W]', Loss.PV_TotRes, 105863.0445, ...
 % Air-cooled: PV_Luft = k_res*(PV_Th+PV_Besch+PV_Zus); PV_Wasser = 0
 InputAir = Input;
 InputAir.Cooling = 'Air';
-LossAir = calculateLosses(InputAir, DimResult, Thy, Speed, uLcase, Psh);
+LossAir = calculateLosses(InputAir, DimResult, Thy, Speed, uLcase, Psh, PshNom);
 check('PV_Luft (Air-cooled) [W]', LossAir.PV_Luft, 105863.0445, ...
     TOL*105863.0445);
 check('PV_Wasser (Air-cooled) [W]', LossAir.PV_Wasser, 0, 1e-6);
 check('PV_TotRes (Air-cooled) [W]', LossAir.PV_TotRes, 105863.0445, ...
     TOL*105863.0445);
 
-%% ===== Per-case Psh: PmachineNominal must use the passed Psh arg,
-% not DimResult.Psh (a real bug this test would have missed if both
-% were left equal, since runLosses() passes a per-operating-point Psh
-% that differs from the fixed dimensioning-time DimResult.Psh) =======
+%% ===== Per-case Psh: the machine-loss base (PmachineNominalRated) must
+% use the passed PshNom arg, not DimResult.Psh (a real bug this test
+% would have missed if both were left equal, since runLosses() passes
+% a per-operating-point Psh that differs from the fixed
+% dimensioning-time DimResult.Psh) ====================================
 etaM = Input.eta_M;
 DimResultOtherPsh = DimResult;
 DimResultOtherPsh.Psh = 999999;   % deliberately wrong, must be ignored
 
-Loss2 = calculateLosses(Input, DimResultOtherPsh, Thy, Speed, uLcase, Psh);
+Loss2 = calculateLosses(Input, DimResultOtherPsh, Thy, Speed, uLcase, Psh, PshNom);
 
-PmachineNominalExpected = Psh * (1/etaM - 1);
+PmachineNominalRatedExpected = PshNom * (1/etaM - 1);
 % Speed(10) >= n_nom(10) and uLcase(0.95)<1 -> field-weakening branches
-MachineExpected = PmachineNominalExpected*0.30/uLcase ...
-    + PmachineNominalExpected*0.50*uLcase^2 ...
-    + PmachineNominalExpected*0.20*(Speed/Input.n_nom)^2;
+MachineExpected = PmachineNominalRatedExpected*0.30/uLcase ...
+    + PmachineNominalRatedExpected*0.50*uLcase^2 ...
+    + PmachineNominalRatedExpected*0.20*(Speed/Input.n_nom)^2;
 
-check('Machine (uses Psh, not DimResult.Psh) [W]', ...
+check('Machine (uses PshNom, not DimResult.Psh) [W]', ...
     Loss2.Machine, MachineExpected, TOL*MachineExpected);
 check('PV_Besch unaffected by DimResult.Psh [W]', ...
     Loss2.PV_Besch, Loss.PV_Besch, TOL*Loss.PV_Besch);
+
+%% ===== All three machine-loss components must use the FIXED nominal
+% Psh (PshNom), not this row's own (possibly speed-reduced) Psh --
+% constant-torque assumption below base speed. Per user report: each
+% component must equal its BaseSpeed/uL=1 value at every point except
+% where its own speed-ratio/uLcase branch explicitly scales it; none of
+% them should scale down merely because this row's shaft power (Psh,
+% still used only for Loss.Pin) is reduced at low speed.
+SpeedLow  = 3;                                  % below Input.n_nom (10)
+PshRowLow = 703400 * SpeedLow / Input.n_nom;    % this row's own (reduced) Psh -- feeds Loss.Pin only
+uLcaseLow = 1.0;                                % irrelevant below base speed
+
+Loss3 = calculateLosses(Input, DimResult, Thy, SpeedLow, uLcaseLow, PshRowLow, PshNom);
+
+speedRatioLow = SpeedLow / Input.n_nom;
+MachineCurrentExpected = 0.30 * PmachineNominalRatedExpected;
+MachineVoltageExpected = 0.50 * PmachineNominalRatedExpected * speedRatioLow;
+MachineFWExpected      = 0.20 * PmachineNominalRatedExpected * speedRatioLow^2;
+check('MachineCurrent (below base speed, uses fixed PshNom) [W]', ...
+    Loss3.MachineCurrent, MachineCurrentExpected, TOL*MachineCurrentExpected);
+check('MachineVoltage (below base speed, uses fixed PshNom) [W]', ...
+    Loss3.MachineVoltage, MachineVoltageExpected, TOL*MachineVoltageExpected);
+check('MachineFW (below base speed, uses fixed PshNom) [W]', ...
+    Loss3.MachineFW, MachineFWExpected, TOL*MachineFWExpected);
+
+% Loss.Pin must still use this row's own (reduced) Psh, not PshNom.
+check('Pin (below base speed, uses row Psh) [W]', ...
+    Loss3.Pin, PshRowLow + Loss3.Total, TOL*(PshRowLow + Loss3.Total));
 
 fprintf('All calculateLosses tests passed.\n');
 
