@@ -1449,6 +1449,7 @@ converterHarmonicHistoryTable.ColumnWidth = 'auto';
 converterHarmonicDetailTable.ColumnWidth = 'auto';
 
 netzMatrixTable.ColumnWidth = 'auto';
+netzMatrixTable.CellEditCallback = @netzMatrixCellEdited;
 netzResultTable.ColumnWidth = 'auto';
 netzSummaryTable.ColumnWidth = 'auto';
 lossTable.ColumnWidth = 'auto';
@@ -3216,6 +3217,22 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % same as the Converter Harmonics tab.
         netzViewSCDropdown.Value = BelastungResult{1,9};
         updateNetzResultView();
+    end
+    function netzMatrixCellEdited(~,~)
+        % Any manual edit to an editable operating-matrix cell (u_M,
+        % i_M, cosphi_M, g_Faktor, u_Lstar, deltaBeta) invalidates the
+        % Losses solve and the Netzbelastung result computed from it, so
+        % re-run the full Losses -> Netzbelastung chain right away
+        % instead of leaving stale results on screen until the buttons
+        % are pressed again. Both functions already process every row
+        % of the current operating matrix in one pass -- SCmin only, or
+        % SCmin and SCmax together when "Include SCmax case" is on --
+        % so a single edit recalculates and republishes both SC cases.
+        NetzOperatingMatrix = netzMatrixTable.Data;
+        netzStatus.Text = 'Recalculating...';
+        drawnow;
+        runLosses([],[]);
+        runNetzbelastung([],[]);
     end
     function updateNetzResultView(~,~)
         caseName = netzViewSCDropdown.Value;
