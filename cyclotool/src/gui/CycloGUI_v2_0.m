@@ -1028,7 +1028,7 @@ sweepToolbar = uipanel(...
     'Units','normalized',...
     'Position',[0.01 0.93 0.98 0.06],...
     'BorderType','none');
-uibutton(...
+sweepRunButton = uibutton(...
     sweepToolbar,...
     'Text','Run Speed Sweep',...
     'Position',[10 5 160 25],...
@@ -7052,6 +7052,12 @@ coolingSweepTable.ColumnWidth = 'auto';
 
     end
     function runOperatingPointSweep(~,~)
+        % Disabled for the duration of the run (re-enabled on any exit,
+        % success or failure) so a second click cannot start an
+        % overlapping sweep while one is already running -- itself
+        % another visible "this is busy" signal alongside sweepStatus.
+        restoreButton = onCleanup(@() set(sweepRunButton, 'Enable', 'on'));
+        sweepRunButton.Enable = 'off';
         try
             %% Require Dimensioning
             if isempty(DimensioningObjects)
@@ -7069,11 +7075,18 @@ coolingSweepTable.ColumnWidth = 'auto';
 
             numberOfPeriods = sweepNumberOfPeriods.Value;
 
-            sweepStatus.Text = 'Running speed sweep (this can take a while at low speed)...';
+            % Cleared up front, then filled in one row at a time by
+            % onSweepProgress as each point starts and finishes, so the
+            % table and status label show live progress -- which point
+            % is running right now -- through this loop instead of
+            % staying blank until the whole (potentially multi-minute)
+            % sweep completes.
+            sweepSummaryTable.Data = cell(0, 11);
+            sweepStatus.Text = 'Starting speed sweep...';
             drawnow;
 
             Sweep = run_cyclo_operating_point_sweep( ...
-                Input, D.Result, D.Thy, numberOfPeriods);
+                Input, D.Result, D.Thy, numberOfPeriods, @onSweepProgress);
 
             LatestOperatingPointSweep = Sweep;
 
@@ -7083,45 +7096,6 @@ coolingSweepTable.ColumnWidth = 'auto';
                 'base', ...
                 'CycloToolDesignDataCache', ...
                 DesignDataCache);
-
-            %% Build summary table
-            data = cell(Sweep.numberOfPoints, 11);
-            for k = 1:Sweep.numberOfPoints
-                PointResult = Sweep.Result{k};
-                if isempty(PointResult)
-                    totalLosskW = NaN;
-                    iuRms = NaN;
-                    maxAlphaDeg = NaN;
-                else
-                    totalLosskW = PointResult.Loss.totalConverterPowerkW;
-                    iuRms = PointResult.Current.iuRms;
-                    % Reference.alphaUDeg/alphaVDeg/alphaWDeg are already
-                    % in degrees (generate_cyclo_firing_reference.m's own
-                    % rad2deg outputs).
-                    maxAlphaDeg = max([ ...
-                        max(PointResult.Reference.alphaUDeg)
-                        max(PointResult.Reference.alphaVDeg)
-                        max(PointResult.Reference.alphaWDeg)]);
-                end
-                if Sweep.FieldWeakening(k)
-                    fieldWeakeningText = 'Y';
-                else
-                    fieldWeakeningText = 'N';
-                end
-                data(k,:) = { ...
-                    Sweep.Point{k}, ...
-                    Sweep.VoltageCase{k}, ...
-                    Sweep.Speed(k), ...
-                    Sweep.f2(k), ...
-                    Sweep.UM_op(k), ...
-                    Sweep.IM_op(k), ...
-                    fieldWeakeningText, ...
-                    Sweep.Status{k}, ...
-                    totalLosskW, ...
-                    iuRms, ...
-                    maxAlphaDeg};
-            end
-            sweepSummaryTable.Data = data;
 
             if Sweep.numberOfErrors > 0
                 sweepStatus.Text = sprintf( ...
@@ -7143,6 +7117,74 @@ coolingSweepTable.ColumnWidth = 'auto';
             fprintf(2, '\n%s\n', errorMessage);
             sweepStatus.Text = 'Sweep failed.';
         end
+    end
+    function rowData = buildSweepTableRowData(Sweep, k)
+        %BUILDSWEEPTABLEROWDATA  One sweepSummaryTable row (matching its
+        % ColumnName order) from row k of a Sweep struct. Shared by
+        % onSweepProgress so the row layout is defined in exactly one
+        % place.
+        PointResult = Sweep.Result{k};
+        if isempty(PointResult)
+            totalLosskW = NaN;
+            iuRms = NaN;
+            maxAlphaDeg = NaN;
+        else
+            totalLosskW = PointResult.Loss.totalConverterPowerkW;
+            iuRms = PointResult.Current.iuRms;
+            % Reference.alphaUDeg/alphaVDeg/alphaWDeg are already in
+            % degrees (generate_cyclo_firing_reference.m's own rad2deg
+            % outputs).
+            maxAlphaDeg = max([ ...
+                max(PointResult.Reference.alphaUDeg)
+                max(PointResult.Reference.alphaVDeg)
+                max(PointResult.Reference.alphaWDeg)]);
+        end
+        if Sweep.FieldWeakening(k)
+            fieldWeakeningText = 'Y';
+        else
+            fieldWeakeningText = 'N';
+        end
+        statusText = Sweep.Status{k};
+        if isempty(statusText)
+            statusText = '';
+        end
+        rowData = { ...
+            Sweep.Point{k}, ...
+            Sweep.VoltageCase{k}, ...
+            Sweep.Speed(k), ...
+            Sweep.f2(k), ...
+            Sweep.UM_op(k), ...
+            Sweep.IM_op(k), ...
+            fieldWeakeningText, ...
+            statusText, ...
+            totalLosskW, ...
+            iuRms, ...
+            maxAlphaDeg};
+    end
+    function onSweepProgress(info)
+        %ONSWEEPPROGRESS  run_cyclo_operating_point_sweep.m's progress
+        % callback: fired as each point starts and finishes so the
+        % Speed Sweep table/status show, live, which point is currently
+        % running -- the sweep is otherwise a single silent multi-
+        % minute call with nothing rendered until it returns.
+        rowData = buildSweepTableRowData(info.Sweep, info.Row);
+        switch info.Phase
+            case 'start'
+                rowData{8} = 'RUNNING';
+                sweepStatus.Text = sprintf( ...
+                    'Running point %d/%d: %s @ %s...', ...
+                    info.Row, info.NumberOfPoints, ...
+                    info.SpeedName, info.VoltageName);
+            case 'done'
+                sweepStatus.Text = sprintf( ...
+                    'Point %d/%d done: %s @ %s (%s).', ...
+                    info.Row, info.NumberOfPoints, ...
+                    info.SpeedName, info.VoltageName, rowData{8});
+        end
+        data = sweepSummaryTable.Data;
+        data(info.Row, :) = rowData;
+        sweepSummaryTable.Data = data;
+        drawnow limitrate;
     end
     function selectOperatingPointSweepRow(~, event)
         %SELECTOPERATINGPOINTSWEEPROW  Drill-down: render the selected
