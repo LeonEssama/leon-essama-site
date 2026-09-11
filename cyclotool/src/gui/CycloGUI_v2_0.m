@@ -2,7 +2,6 @@ function CycloGUI_v2_0()
 srcFolder = fileparts(fileparts(mfilename('fullpath')));
 addpath(genpath(srcFolder));
 DB = ThyristorDatabase();
-OVDB = OV_ThyristorDatabase();
 BusbarUI = [];
 %% History storage
 DimensioningHistory = {};
@@ -703,26 +702,22 @@ Uv0_stator = addField(...
     1270,...
     220);
 updateStatorUv0Mode();
-uLmax_OV = addField(...
-    statorPanel,...
-    'uL max [pu]',...
-    1.1,...
-    180);
-VDRM_OV = addField(...
-    statorPanel,...
-    'VDRM [V]',...
-    5200,...
-    140);
+% uL,max and VDRM (stator) are NOT independent inputs: uL,max = 2 -
+% u_L (the "uL,min" [pu] field on the Network panel, same "uL,max" the
+% rest of the tool computes as 1+(1-uLmin)); VDRM is the Dimensioning-
+% selected thyristor's own UDRM. Both are computed in runOVProtection()
+% and shown as read-only results (see showOVProtection()) rather than
+% duplicated here as separately editable fields.
 deltaUBOD = addField(...
     statorPanel,...
     'dU(BOD) [V]',...
     50,...
-    100);
+    180);
 kStator = addField(...
     statorPanel,...
     'k Stator',...
     0.787,...
-    20);
+    140);
 uilabel(statorPanel,...
     'Text','Selected BOD [V]',...
     'Position',[10 255 130 22]);
@@ -808,17 +803,20 @@ uidropdown(...
     'Items',{'Database','Manual'},...
     'Value','Database',...
     'Position',[170 130 180 22]);
-uilabel(thyOVPanel,...
-    'Text','Protection Thyristor',...
-    'Position',[10 100 120 22]);
-
-OVThy = uidropdown(...
+% "Protection Thyristor" is no longer an independent manual selection:
+% the Dauergrenzstrom-des-Cyclo-Thyristors check (see
+% overvoltage_protection_calculation.m) now looks up OV_ThyristorDatabase
+% by matching the Dimensioning-selected thyristor's own UDRM. I(M,max)
+% [A] -- the crowbar-sizing current, D.Result.IM_start from Dimensioning
+% -- is shown here read-only instead, since it previously had no visible
+% place in the input panels at all (only appeared post-Calculate, in the
+% results table).
+IMmax_Display = addField(...
     thyOVPanel,...
-    'Items',{OVDB.Type},...
-    'Value',OVDB(2).Type,...
-    'Position',[170 100 180 22]);
-OVThy.ValueChangedFcn = ...
-    @(~,~) updateOVThyristor();
+    'I(M,max) [A]',...
+    0,...
+    100);
+IMmax_Display.Editable = 'off';
 
 Rth_jc_05s = addField(...
     thyOVPanel,...
@@ -840,7 +838,6 @@ rT_OV = addField(...
     'rT [Ohm]',...
     5.7e-4,...
     20);
-updateOVThyristor();
 %% ==========================================================
 % CALCULATION PANEL
 %% ==========================================================
@@ -1771,12 +1768,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             StatorUv0Mode.Value;
         Input.Uv0_stator = ...
             Uv0_stator.Value;
-        Input.uLmax_OV = ...
-            uLmax_OV.Value;
-        Input.VDRM_OV = ...
-            VDRM_OV.Value;
-        Input.OVThyType = ...
-            OVThy.Value;
         Input.deltaUBOD = ...
             deltaUBOD.Value;
         Input.kStator = ...
@@ -5550,10 +5541,16 @@ coolingSweepTable.ColumnWidth = 'auto';
             if strcmpi(RotorUv0Mode.Value,'Auto (DCS880 UV0)')
                 Uv0_Rotor.Value = str2double(UV0_Selected.Value);
             end
-            % Build standard input
-            Input = buildInput([]);
-            % Maximum motor current for crowbar sizing
+            % Build standard input, carrying the Dimensioning-selected
+            % thyristor (Input.Thy) through -- overvoltage_protection_
+            % calculation.m needs its UDRM for the stator VDRM and the
+            % Dauergrenzstrom check.
+            Input = buildInput(D.Thy);
+            % Maximum motor current for crowbar sizing (workbook I(M,max));
+            % also shown read-only on the input tab (IMmax_Display), which
+            % otherwise has no visible source for this value before Calculate.
             Input.IMmax_OV = D.Result.IM_start;
+            IMmax_Display.Value = D.Result.IM_start;
             % Run OV calculation
             O = overvoltage_protection_calculation(Input);
             %% Store latest protection result for Design Data generation
@@ -5614,6 +5611,12 @@ coolingSweepTable.ColumnWidth = 'auto';
             '-';
             '','','';
             '=== BOD ELEMENT ===','','';
+            'uL,max (=2-uL,min)',...
+            round(O.uLmax,3),...
+            'pu';
+            'VDRM Stator (Dimensioning thyristor)',...
+            O.VDRM_Stator,...
+            'V';
             'UBoD Min',...
             round(O.UBoD_min,1),...
             'V';
@@ -5696,6 +5699,9 @@ coolingSweepTable.ColumnWidth = 'auto';
             'A';
             '','','';
             '=== CYCLO THYRISTOR DAUERGRENZSTROM ===','','';
+            'OV Thermal Class (matched by UDRM)',...
+            O.OVThyType,...
+            '-';
             'I(Th,zul) Cyclo',...
             round(O.ITh_zul_Cyclo,1),...
             'A';
@@ -5706,25 +5712,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             CycloThermalStatus,...
             '-';
             };
-    end
-    function updateOVThyristor()
-        % "Protection Thyristor" (OVThy) selects the MAIN/cyclo converter
-        % thyristor's VDRM class (used for the Dauergrenzstrom-des-Cyclo-
-        % Thyristors continuous-current check in
-        % overvoltage_protection_calculation.m, and for the stator's
-        % catalog-selected VDRM_OV). It must NOT touch Rth_jc_05s/
-        % DeltaTheta/VT0_OV/rT_OV: those four fields describe a
-        % physically different device, the crowbar/Kurzschliesser
-        % thyristor (e.g. reference workbook "Kurzschliesser-Thyristor
-        % HUEL 412304"), whose thermal-check formula and data are
-        % unrelated to OV_ThyristorDatabase. Their own defaults (see the
-        % reset-to-default block) already carry that device's spec and
-        % must stay independently editable.
-        idx = find(strcmp({OVDB.Type},...
-            OVThy.Value),1);
-        VDRM_OV.Value = ...
-            OVDB(idx).VDRM;
-
     end
     function runDetailedSimulation(~,~)
         try
@@ -7033,8 +7020,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             BOD_Stator.Value;
         Project.Gui.BOD_Rotor = ...
             BOD_Rotor.Value;
-        Project.Gui.OVThy = ...
-            OVThy.Value;
         Project.Results.DimensioningHistory = ...
             DimensioningHistory;
         Project.Results.DimensioningObjects = ...
@@ -7245,8 +7230,6 @@ coolingSweepTable.ColumnWidth = 'auto';
         end
         updateStatorUv0Mode();
         Uv0_stator.Value = P.Uv0_stator;
-        uLmax_OV.Value   = P.uLmax_OV;
-        VDRM_OV.Value    = P.VDRM_OV;
         deltaUBOD.Value  = P.deltaUBOD;
         kStator.Value    = P.kStator;
         TKS.Value        = P.TKS;
@@ -7292,8 +7275,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             Project.Gui.BOD_Stator;
         BOD_Rotor.Value = ...
             Project.Gui.BOD_Rotor;
-        OVThy.Value = ...
-            Project.Gui.OVThy;
         %% =====================================================
         % SPECIALS
         %% =====================================================
@@ -7308,7 +7289,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             BusbarUI.setSettings(Project.Busbar);
         end
         updateDatasheet();
-        updateOVThyristor();
     end
     function resetInputsToDefault()
         %% ==========================================
@@ -7459,10 +7439,6 @@ coolingSweepTable.ColumnWidth = 'auto';
         Uv0_stator.Value = 1270;
         updateStatorUv0Mode();
 
-        uLmax_OV.Value = 1.1;
-
-        VDRM_OV.Value = 5200;
-
         deltaUBOD.Value = 50;
 
         kStator.Value = 0.787;
@@ -7483,7 +7459,7 @@ coolingSweepTable.ColumnWidth = 'auto';
 
         nc_OV.Value = 0.5;
 
-        OVThy.Value = OVDB(2).Type;
+        IMmax_Display.Value = 0;
 
         Rth_jc_05s.Value = 0.018;
 
@@ -7506,7 +7482,6 @@ coolingSweepTable.ColumnWidth = 'auto';
             BusbarUI.setSections(BusbarSectionDefaults());
         end
         updateDatasheet();
-        updateOVThyristor();
 
     end
     function loadProject(~,~)

@@ -11,40 +11,47 @@ function O = overvoltage_protection_calculation(Input)
 %   Also computes protection current thresholds (I115/I135), the
 %   protection current limit, the protection blocking frequency, and the
 %   main/cyclo converter thyristor's continuous current rating
-%   ("Dauergrenzstrom") check for the selected VDRM class.
+%   ("Dauergrenzstrom") check for the VDRM class of the thyristor
+%   actually selected in Dimensioning.
 %
 %   Source: user-supplied reference workbook "Atalaya_Kurzschliesser.xlsx",
 %   sheet "SAG Mill". No IEC/IEEE/NEMA/ANSI standard is cited on that
 %   workbook for any formula below; every formula is the vendor/
 %   reference-document's own.
 %
-%   Two formula/data-mapping gaps found against that workbook and fixed
-%   here (both formerly conflated the crowbar thyristor with the main
-%   converter thyristor -- two physically different devices):
+%   Three quantities the GUI previously treated as independent manual
+%   inputs are, per the workbook and per user-confirmed engineering
+%   practice, NOT independent -- they must be derived from data that
+%   already exists elsewhere in the tool:
 %
-%   1. Rotor BOD window VDRM (workbook I18) is NOT the manually selected/
-%      catalog VDRM_OV used for the stator (workbook D18) -- it is
-%      calculated directly from the rotor excitation voltage:
-%      VDRM_Rotor = 2*sqrt(2)*1.32*Uv0_Rotor. The GUI previously passed
-%      the same Input.VDRM_OV into both the stator and rotor BOD-window
-%      calls; the rotor call now uses this formula instead.
-%   2. The workbook's "Dauergrenzstrom des Cyclo-Thyristors" block
-%      (continuous current rating of the MAIN/cyclo thyristor, for the
-%      selected VDRM class) was entirely missing from this function. Its
-%      thermal data (VT0/rT/Rth_jc/Rth_ch/Rth_ha/DeltaTheta per VDRM
-%      class) already exists in OV_ThyristorDatabase.m and matches the
-%      workbook's "Protective Settings" table (rows 39-47) exactly, but
-%      the GUI was wiring that same data into the CROWBAR thyristor's
-%      thermal-check fields (Rth_jc_05s/DeltaTheta/VT0_OV/rT_OV) instead
-%      -- a different device (workbook "Kurzschliesser-Thyristor HUEL
-%      412304") with its own, single-lumped-Rth thermal model. That GUI
-%      wiring bug is fixed separately (updateOVThyristor() in
-%      CycloGUI_v2_0.m); this function now implements the missing
-%      Dauergrenzstrom formula itself, keyed by Input.OVThyType.
+%   1. uL,max is the SAME "uL,max" used throughout the rest of the tool
+%      (e.g. the "ABB Operating Point Voltages" block in CycloGUI_v2_0.m:
+%      uLmax = 1 + (1-uLmin)), not a separate manually entered value.
+%      Computed here as uLmax = 2 - Input.u_L (Input.u_L is "uL,min").
+%   2. The stator BOD window's VDRM (workbook D18) is the voltage class
+%      (UDRM) of the thyristor actually selected for Dimensioning
+%      (Input.Thy), not an independently chosen catalog part. Computed
+%      here as Input.Thy.UDRM.
+%   3. The "Dauergrenzstrom des Cyclo-Thyristors" continuous-current
+%      check (workbook rows 37-47, 3 columns for VDRM=2800/5200/6500)
+%      must use the SAME thyristor's data, not a separately, independently
+%      selected "Protection Thyristor". OV_ThyristorDatabase.m (a small
+%      database transcribed from this workbook's own C39:E45 table,
+%      Rth_jc/Rth_ch/Rth_ha/VT0/rT/DeltaTheta per VDRM class -- kept as a
+%      dedicated database rather than reading ThyristorDatabase.m
+%      directly, since the two tables' values are not always identical
+%      for the same VDRM class and ThyristorDatabase.m has no DeltaTheta
+%      field for this check) is now looked up by matching
+%      Input.Thy.UDRM, not by a free-standing dropdown selection.
 %
-%   Required Input fields (added by this audit): OVThyType -- the
-%   OV_ThyristorDatabase Type string for the selected main/cyclo
-%   converter thyristor VDRM class (e.g. '4in_5200V').
+%   Rotor BOD-window VDRM (workbook I18) remains a genuinely separate
+%   calculated quantity: VDRM_Rotor = 2*sqrt(2)*1.32*Uv0_Rotor (not tied
+%   to Input.Thy -- the rotor/field circuit's blocking-voltage
+%   requirement comes from the DCS880 excitation voltage, not the main
+%   converter thyristor).
+%
+%   Required Input fields include Thy (the struct selected in
+%   Dimensioning; must have UDRM) -- see calculate.m / ThyristorDatabase.m.
 
 if Input.Rth_jc_05s == 0
     error('overvoltage_protection_calculation:ZeroRth', ...
@@ -53,6 +60,11 @@ end
 if Input.rT_OV == 0
     error('overvoltage_protection_calculation:ZeroRT', ...
         'Input.rT_OV must be nonzero.');
+end
+if isempty(Input.Thy) || ~isfield(Input.Thy, 'UDRM')
+    error('overvoltage_protection_calculation:NoThyristor', ...
+        ['Input.Thy must be the Dimensioning-selected thyristor struct ', ...
+         '(with a UDRM field) -- run Dimensioning first.']);
 end
 
 O = struct();
@@ -67,12 +79,22 @@ O.IMmax_half   = Input.IMmax_OV / 2;
 O.Thermal_OK   = O.ITh_zul >= O.IMmax_half;
 O.ThermalMargin = O.ITh_zul - O.IMmax_half;
 
+%% ====================================================
+% uL,max: same quantity used throughout the tool (uLmax = 2 - uL,min),
+% not an independent manual input -- see function header.
+%% ====================================================
+O.uLmax = 2 - Input.u_L;
+
 %% =====================================================
-% Stator BOD limits, resistor and energy
+% Stator BOD limits, resistor and energy. VDRM is the Dimensioning-
+% selected thyristor's own voltage class (Input.Thy.UDRM), not an
+% independent manual/catalog choice -- see function header.
 %% =====================================================
+O.VDRM_Stator = Input.Thy.UDRM;
+
 [O.UBoD_min, O.UBoD_max, O.UBoD_selected, O.BOD_OK, ...
     O.BOD_MarginLow, O.BOD_MarginHigh] = bodWindow( ...
-    Input.uLmax_OV, Input.Uv0_stator, Input.VDRM_OV, ...
+    O.uLmax, Input.Uv0_stator, O.VDRM_Stator, ...
     Input.deltaUBOD, Input.BOD_Stator);
 
 O.RKS  = O.UBoD_selected / (Input.kStator * Input.IMmax_OV);
@@ -83,12 +105,12 @@ O.EKS  = (Input.kStator * Input.IMmax_OV)^2 * Input.TKS * O.RKS / 3000;
 % Rotor BOD limits, resistor and energy
 %% ====================================================
 % Rotor VDRM is the calculated blocking-voltage requirement (workbook
-% I18), not the stator's manually selected/catalog VDRM_OV -- see the
-% function header.
+% I18), independent of the main converter thyristor -- see function
+% header.
 O.VDRM_Rotor_calc = 2 * sqrt(2) * 1.32 * Input.Uv0_Rotor;
 
 [O.UBoD_min_Rotor, O.UBoD_max_Rotor, O.UBoD_selected_Rotor, O.BOD_OK_Rotor] = ...
-    bodWindow(Input.uLmax_OV, Input.Uv0_Rotor, O.VDRM_Rotor_calc, ...
+    bodWindow(O.uLmax, Input.Uv0_Rotor, O.VDRM_Rotor_calc, ...
     Input.deltaUBOD, Input.BOD_Rotor);
 
 O.RKS_Rotor  = O.UBoD_selected_Rotor / (Input.kRotor * Input.IeDCmax);
@@ -116,16 +138,18 @@ O.fc  = Input.PolePairs * Input.nc_OV / 60;
 O.Tc2 = 1 / (2 * O.fc);
 
 %% ====================================================
-% Dauergrenzstrom des Cyclo-Thyristors: continuous current rating of the
-% MAIN/cyclo converter thyristor for the selected VDRM class, checked
-% against the protection current limit ILimit (=IM*startup).
+% Dauergrenzstrom des Cyclo-Thyristors: continuous current rating for
+% the Dimensioning-selected thyristor's VDRM class (Input.Thy.UDRM),
+% checked against the protection current limit ILimit (=IM*startup).
 %% ====================================================
 OVDB = OV_ThyristorDatabase();
-cycloIdx = find(strcmp({OVDB.Type}, Input.OVThyType), 1);
+cycloIdx = find([OVDB.VDRM] == Input.Thy.UDRM, 1);
 if isempty(cycloIdx)
     error('overvoltage_protection_calculation:NoOVThyristorMatch', ...
-        'No OV_ThyristorDatabase entry for Input.OVThyType = ''%s''.', ...
-        Input.OVThyType);
+        ['Dimensioning thyristor UDRM = %g V has no matching entry in ', ...
+         'OV_ThyristorDatabase (available: %s V). Add a workbook-sourced ', ...
+         'entry for this VDRM class before running OV Protection.'], ...
+        Input.Thy.UDRM, mat2str([OVDB.VDRM]));
 end
 CycloThy = OVDB(cycloIdx);
 RthSum = CycloThy.Rth_jc + CycloThy.Rth_ch + CycloThy.Rth_ha;
@@ -134,6 +158,7 @@ O.ITh_zul_Cyclo = (-CycloThy.VT0 + sqrt(CycloThy.VT0^2 + ...
     * 3 / sqrt(2);
 O.CycloThermal_OK     = O.ITh_zul_Cyclo >= O.ILimit;
 O.CycloThermalMargin  = O.ITh_zul_Cyclo - O.ILimit;
+O.OVThyType            = CycloThy.Type;
 
 end
 

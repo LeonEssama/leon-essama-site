@@ -4,19 +4,32 @@ function test_overvoltage_protection_calculation()
 %example (user-supplied "Atalaya_Kurzschliesser.xlsx", sheet "SAG Mill",
 %project "Atalaya SAG Mill 23'000 kW").
 %
-%   Confirms the two gaps found in the original implementation are now
+%   Confirms the gaps found in the original implementation are now
 %   covered:
 %     1. Rotor BOD-window VDRM is calculated (workbook I18, 2*sqrt(2)*
-%        1.32*Uv0_Rotor), not the stator's manually selected VDRM_OV.
+%        1.32*Uv0_Rotor), not the stator's VDRM.
 %     2. The "Dauergrenzstrom des Cyclo-Thyristors" continuous-current
 %        check for the main/cyclo converter thyristor (workbook rows
-%        37-47) is implemented, keyed by Input.OVThyType against
-%        OV_ThyristorDatabase.
+%        37-47) is implemented, matched against OV_ThyristorDatabase by
+%        Input.Thy.UDRM (the Dimensioning-selected thyristor), not an
+%        independent selection.
+%     3. uL,max is derived (2 - Input.u_L), the same relationship used
+%        elsewhere in the tool, not an independent input.
+%     4. Stator VDRM is Input.Thy.UDRM (the Dimensioning-selected
+%        thyristor's own voltage class), not an independent input.
+%
+%   Input.Thy.UDRM = 6500 V here because this is the same Atalaya SAG
+%   Mill project as tests/test_calculateLosses.m, whose Thy.UT0=1.02 /
+%   Thy.rT=2.9e-4 match ThyristorDatabase.m's HUEL 412323 (UDRM=6500)
+%   exactly -- confirming the Dauergrenzstrom check below must use the
+%   workbook's "E" column (VDRM=6500), not "D" (VDRM=5200) as an earlier,
+%   disconnected "Protection Thyristor" dropdown selection had assumed.
 %
 %   Crowbar-thyristor thermal check (Rth_jc_05s/DeltaTheta/VT0_OV/rT_OV)
-%   uses the workbook's "D" column (deltaTheta=85 K) -- the workbook has
-%   no explicit pass/fail formula for this check, so this test only
-%   verifies the ITh_zul VALUE against the workbook's own D12 cell.
+%   uses the workbook's "D" column (deltaTheta=85 K) -- an independent,
+%   separate device (the crowbar/Kurzschliesser thyristor itself, not the
+%   main converter thyristor) with no pass/fail formula in the workbook,
+%   so this test only verifies the ITh_zul VALUE against D12.
 %
 %   The stator BOD check FAILS in this example (selected BOD 2600 V is
 %   below the workbook's own required window [4341.3, 5366.7] V) -- this
@@ -33,9 +46,9 @@ Input.VT0_OV     = 1.1;
 Input.rT_OV      = 0.00057;
 Input.IMmax_OV   = 4038;    % workbook D10
 
-Input.uLmax_OV  = 1.05;     % workbook D17 = I17
+Input.Thy = struct('UDRM', 6500);   % Dimensioning-selected thyristor (see header)
+
 Input.Uv0_stator = 1710;    % workbook D16
-Input.VDRM_OV    = 6500;    % workbook D18 (stator: manually selected/catalog)
 Input.deltaUBOD  = 50;      % workbook D19 = I19
 Input.BOD_Stator = 2600;    % workbook D24
 Input.kStator    = 0.805;   % workbook D28
@@ -48,14 +61,16 @@ Input.IeDCmax   = 635;      % workbook I20
 
 Input.startup  = 1.5;       % workbook D51 (Hochlauf)
 Input.overload = 1;         % workbook D50 (Ueberlast)
-Input.u_L      = 0.95;      % workbook D52 (uL,min)
+Input.u_L      = 0.95;      % workbook D52 (uL,min) -- also feeds uLmax=2-u_L
 Input.IM       = 2692;      % workbook D49 (IM1)
 Input.PolePairs = 36;       % workbook I49
 Input.nc_OV     = 0.3;      % workbook I50
 
-Input.OVThyType = '4in_5200V';   % workbook C39:E45 "D" column (VDRM=5200)
-
 O = overvoltage_protection_calculation(Input);
+
+%% ===== uL,max and stator VDRM: now derived, not independent inputs =====
+check('uLmax [pu] (=2-u_L)', O.uLmax, 1.05, 1e-9);
+check('VDRM_Stator [V] (=Input.Thy.UDRM)', O.VDRM_Stator, 6500, 1e-9);
 
 %% ===== Crowbar thyristor thermal limit (workbook C12/D12, D13) =====
 check('ITh_zul [A]', O.ITh_zul, 2070.817631413717, TOL*2070.82);
@@ -94,9 +109,11 @@ check('ILimit [A]', O.ILimit, 4038, 1e-9);
 check('fc [Hz]', O.fc, 0.18, 1e-9);
 check('Tc2 [s]', O.Tc2, 2.7777777777777777, TOL*2.78);
 
-%% ===== Dauergrenzstrom des Cyclo-Thyristors -- gap #2 (workbook D47) =====
-check('ITh_zul_Cyclo [A]', O.ITh_zul_Cyclo, 6936.016458282812, TOL*6936.02);
-check('CycloThermalMargin [A]', O.CycloThermalMargin, 2898.016458282812, TOL*2898.02);
+%% ===== Dauergrenzstrom des Cyclo-Thyristors -- matched by Input.Thy.UDRM
+%% =6500 to workbook's "E" column (E39:E47), NOT "D"/5200 =====
+check('OVThyType (matched class)', O.OVThyType, '4in_6500V', 0);
+check('ITh_zul_Cyclo [A]', O.ITh_zul_Cyclo, 5984.1914161849445, TOL*5984.19);
+check('CycloThermalMargin [A]', O.CycloThermalMargin, 1946.1914161849445, TOL*1946.19);
 check('CycloThermal_OK', O.CycloThermal_OK, true, 0);
 
 fprintf('All overvoltage_protection_calculation tests passed.\n');
@@ -105,7 +122,12 @@ end
 
 %% ==========================================================
 function check(label, actual, expected, tol)
-if islogical(actual) || islogical(expected)
+if ischar(actual) || isstring(actual)
+    if ~strcmp(actual, expected)
+        error('CycloTool:TestFailed', '%s mismatch: got ''%s'', expected ''%s''', ...
+            label, char(actual), char(expected));
+    end
+elseif islogical(actual) || islogical(expected)
     if logical(actual) ~= logical(expected)
         error('CycloTool:TestFailed', '%s mismatch: got %d, expected %d', ...
             label, actual, expected);
