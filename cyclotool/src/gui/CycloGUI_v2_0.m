@@ -2597,6 +2597,14 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             else
                 OPStudy = OperatingPointStudySCmax;
             end
+            if isempty(OPStudy)
+                uialert(fig,...
+                    ['Run Operating Point for ' choice ' first -- the ', ...
+                    'harmonic calculation needs its 5 RMS/Peak cases as ', ...
+                    'input.'],...
+                    'Warning');
+                return
+            end
             Study = cell(1,5);
             CaseNames = {
                 'RMS uLmin'
@@ -2722,6 +2730,21 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
             return
         end
         Study = HarmonicObjects{idx}.Study;
+        if numel(Study) < 5 || any(cellfun(@isempty, Study(1:5)))
+            % Guards against a malformed entry (e.g. computed before the
+            % Operating Point/Harmonics dependency was enforced, or
+            % loaded from an older saved project) whose 5 RMS/Peak cases
+            % are not all populated -- H.IL1 below would otherwise throw
+            % a dot-indexing error on an empty cell.
+            converterHarmonicDetailTable.Data = {};
+            cla(converterHarmonicAx);
+            uialert(fig, [ ...
+                'This harmonic study is incomplete (missing one or ', ...
+                'more of its 5 RMS/Peak cases). Re-run Operating Point ', ...
+                'for this case, then Calculate Harmonics again.'], ...
+                'Incomplete Study');
+            return
+        end
         switch harmonicCaseDropdown.Value
             case 'RMS uLmin'
                 H = Study{1};
