@@ -9,9 +9,22 @@ function Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh)
 %       scaled by speed ratio and operating point (uLcase, Speed vs.
 %       nominal) exactly as in the original ABB loss model
 %     - Transformer losses: no-load + load losses scaled by uLcase^2
+%     - Air/water cooling split (PV_Luft/PV_Wasser/PV_TotRes), per the
+%       MEGADRIVE-CYCLO VBA (Verlustrechnung, P. Burmeister, 2000):
+%         Water-cooled: PV_Luft = k_res*PV_Zus
+%                       PV_Wasser = k_res*(PV_Th+PV_Besch)
+%         Air-cooled:   PV_Luft = k_res*(PV_Th+PV_Besch+PV_Zus)
+%                       PV_Wasser = 0
+%         PV_TotRes = PV_Luft + PV_Wasser
+%       The VBA's PV_3GL and PV_Si terms are omitted here (out of scope
+%       for this tool -- no n(s)>1 series-thyristor or fuse-datasheet
+%       inputs exist), so PV_Wasser is not identical to the VBA's for a
+%       converter that has a fuse and/or n(s)>1.
 %     - Total loss and required input power (Psh + Loss.Total)
 %
-%   Calculation logic is unchanged from the original.
+%   Calculation logic is unchanged from the original, except k_res is
+%   now Input.k_res (a GUI input, "k(Reserve)" on the VBA's Verluste
+%   sheet) instead of a hardcoded 1.05.
 
 if Input.eta_M <= 0
     error('calculateLosses:InvalidEfficiency', 'Input.eta_M must be > 0.');
@@ -52,8 +65,27 @@ Loss.PV_Besch = PV_Besch;
 PV_Zus = 0;
 Loss.PV_Zus = PV_Zus;
 
-k_res = 1.05;   % Empirical safety/rounding factor on converter losses
+if isfield(Input,'k_res')
+    k_res = Input.k_res;   % Safety/rounding factor, VBA "k(Reserve)"
+else
+    k_res = 1.1;   % Default for a dimensioning result saved before
+                    % k_res was a GUI input (was hardcoded 1.05 then)
+end
 Loss.Converter = k_res * (PV_Th + PV_Besch + PV_Zus);
+
+%% -------------------------------------------------
+% Air / Water Cooling Split
+%% -------------------------------------------------
+if strcmpi(Input.Cooling,'Water')
+    PV_Luft   = k_res * PV_Zus;
+    PV_Wasser = k_res * (PV_Th + PV_Besch);
+else
+    PV_Luft   = k_res * (PV_Th + PV_Besch + PV_Zus);
+    PV_Wasser = 0;
+end
+Loss.PV_Luft   = PV_Luft;
+Loss.PV_Wasser = PV_Wasser;
+Loss.PV_TotRes = PV_Luft + PV_Wasser;
 
 %% -------------------------------------------------
 % ABB Machine Loss Model

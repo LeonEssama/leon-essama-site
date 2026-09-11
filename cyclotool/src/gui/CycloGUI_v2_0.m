@@ -335,7 +335,15 @@ TrafoPk = addField(...
 
 designPanel = uipanel(tabDesign,...
     'Title','Design',...
-    'Position',[10 400 500 180]);
+    'Position',[10 365 500 215]);
+
+kReserveLoss = addField(designPanel,...
+    'k(Reserve) Loss',1.1,165);
+kReserveLoss.Tooltip = [ ...
+    'Converter-loss safety/rounding factor k_res (VBA "k(Reserve)" on ', ...
+    'the Verluste sheet) -- multiplies PV(Th)+PV(Besch)+PV(Zus) when ', ...
+    'computing PV(Luft)/PV(Wasser)/PV(Tot+Res) on the Losses tab. Not ', ...
+    'the same as "Reserve Factor" below, which sizes STr.'];
 
 overload = addField(designPanel,...
     'Overload',1.0,130);
@@ -1636,6 +1644,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         Input.TrafoPk_kW = ...
             TrafoPk.Value;
         Input.k_C = kC.Value;
+        Input.k_res = kReserveLoss.Value;
         Input.ReserveFactor = ...
             ReserveFactor.Value;
         Input.k_alt = ...
@@ -4084,39 +4093,63 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         populateLossDetail(LossObjects{row});
     end
     function populateLossDetail(Loss)
+        % Curated PV breakdown, per the VBA Verlustrechnung (MEGADRIVE-
+        % CYCLO, P. Burmeister 2000) and matching the reference table's
+        % row order/grouping. PV(3 GL) and PV(Si) are omitted: this tool
+        % has no n(s)>1 series-thyristor or fuse-datasheet inputs for
+        % them (per user direction).
+        % PV_Luft/PV_Wasser/PV_TotRes guarded: a project saved before
+        % this fix won't have them on its stored LossObjects entries.
+        breakdown = {
+            'PV(Th)',      Loss.PV_Th,     'W'
+            'PV(Besch)',   Loss.PV_Besch,  'W'
+            'PV(Zus)',     Loss.PV_Zus,    'W'
+            '',            [],             ''
+            'PV(Tot+Res)', getResultField(Loss,'PV_TotRes',NaN), 'W'
+            '',            [],             ''
+            'PV(Luft)',    getResultField(Loss,'PV_Luft',NaN),   'W'
+            'PV(Wasser)',  getResultField(Loss,'PV_Wasser',NaN), 'W'
+            };
+        nBreak = size(breakdown,1);
+        totResRow = find(strcmp(breakdown(:,1),'PV(Tot+Res)'),1);
+
         fields = fieldnames(Loss);
-        data = cell(numel(fields),3);
+        data = cell(numel(fields)+nBreak,3);
+        data(1:nBreak,:) = breakdown;
         for k = 1:numel(fields)
-            data{k,1} = fields{k};
+            r = k + nBreak;
+            data{r,1} = fields{k};
             value = Loss.(fields{k});
             if isnumeric(value)
                 if isscalar(value)
-                    data{k,2} = value;
+                    data{r,2} = value;
                 elseif numel(value) <= 10
-                    data{k,2} = mat2str(value);
+                    data{r,2} = mat2str(value);
                 else
-                    data{k,2} = sprintf( ...
+                    data{r,2} = sprintf( ...
                         '[%d elements]', ...
                         numel(value));
                 end
             elseif islogical(value)
-                data{k,2} = value;
+                data{r,2} = value;
             elseif ischar(value)
-                data{k,2} = value;
+                data{r,2} = value;
             elseif isstring(value)
-                data{k,2} = char(value);
+                data{r,2} = char(value);
             elseif isstruct(value)
-                data{k,2} = sprintf( ...
+                data{r,2} = sprintf( ...
                     '[STRUCT: %d fields]', ...
                     numel(fieldnames(value)));
             else
-                data{k,2} = sprintf( ...
+                data{r,2} = sprintf( ...
                     '[%s]', ...
                     class(value));
             end
-            data{k,3} = '-';
+            data{r,3} = '-';
         end
         lossDetailTable.Data = data;
+        removeStyle(lossDetailTable);
+        addStyle(lossDetailTable, uistyle('FontWeight','bold'), 'row', totResRow);
     end
     function showCharacteristic(C)
         Input = CharacteristicObjects{end}.Input;
@@ -6342,6 +6375,11 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         startup.Value  = P.startup;
         gFactor.Value = P.g_Faktor;
         kC.Value      = P.k_C;
+        if isfield(P,'k_res')
+            kReserveLoss.Value = P.k_res;
+        else
+            kReserveLoss.Value = 1.1;
+        end
         %% =====================================================
         % ADVANCED
         %% =====================================================
@@ -6502,6 +6540,7 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
 
         gFactor.Value = 1.15;
         kC.Value = 1.6;
+        kReserveLoss.Value = 1.1;
 
         %% ==========================================
         % Advanced
