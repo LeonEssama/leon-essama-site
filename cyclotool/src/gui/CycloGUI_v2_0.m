@@ -1204,8 +1204,7 @@ lossTable = uitable(...
     'TransformerLoss [W]',...
     'ConverterLoss [W]',...
     'TotalLoss [W]',...
-    'Pin [W]',...
-    'SCCase'});
+    'Pin [W]'});
 lossTable.Units = 'normalized';
 lossTable.Position = [0.01 0.48 0.98 0.44];
 lossDetailTable = uitable(...
@@ -1449,6 +1448,7 @@ converterHarmonicHistoryTable.ColumnWidth = 'auto';
 converterHarmonicDetailTable.ColumnWidth = 'auto';
 
 netzMatrixTable.ColumnWidth = 'auto';
+netzMatrixTable.CellEditCallback = @netzMatrixCellEdited;
 netzResultTable.ColumnWidth = 'auto';
 netzSummaryTable.ColumnWidth = 'auto';
 lossTable.ColumnWidth = 'auto';
@@ -3217,6 +3217,22 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         netzViewSCDropdown.Value = BelastungResult{1,9};
         updateNetzResultView();
     end
+    function netzMatrixCellEdited(~,~)
+        % Any manual edit to an editable operating-matrix cell (u_M,
+        % i_M, cosphi_M, g_Faktor, u_Lstar, deltaBeta) invalidates the
+        % Losses solve and the Netzbelastung result computed from it, so
+        % re-run the full Losses -> Netzbelastung chain right away
+        % instead of leaving stale results on screen until the buttons
+        % are pressed again. Both functions already process every row
+        % of the current operating matrix in one pass -- SCmin only, or
+        % SCmin and SCmax together when "Include SCmax case" is on --
+        % so a single edit recalculates and republishes both SC cases.
+        NetzOperatingMatrix = netzMatrixTable.Data;
+        netzStatus.Text = 'Recalculating...';
+        drawnow;
+        runLosses([],[]);
+        runNetzbelastung([],[]);
+    end
     function updateNetzResultView(~,~)
         caseName = netzViewSCDropdown.Value;
         switch netzViewDropdown.Value
@@ -4074,12 +4090,21 @@ gridHarmonicDetailTable.ColumnWidth = 'auto';
         % -------------------------------------------------
         % Update losses table
         % -------------------------------------------------
-        % No SC Case filter here -- shows every row of the current
-        % operating matrix (both SCmin and SCmax together when "Include
-        % SCmax case" is on), same as before the SC Case view selector
-        % existed. The SCCase column still identifies each row.
-        LossResults = Results;
-        lossTable.Data = Results;
+        % Loss.* never depends on GridSCC (grid short-circuit power) --
+        % calculateLosses() takes Speed/Psh/IM/Uv0N/uLcase, none of which
+        % differ between the SCmin and SCmax rows for the same operating
+        % point -- so the SCmin and SCmax blocks of Results are numeric
+        % duplicates of each other. Show only the base block (the first
+        % 12 rows, always SCmin -- generateNetzMatrix() always emits
+        % 'SCmin' first) so the table is always 12 rows with no SCCase
+        % column, while LossObjects/Results (both SC cases' worth of
+        % rows when "Include SCmax case" is on) stay complete internally
+        % for Netzbelastung, which DOES need a per-row, per-case solved
+        % u_M/u_Lstar (GridSCC enters solveUM/calculateNetzIL1 there).
+        baseCase = Results{1,10};
+        displayRows = strcmp(Results(:,10), baseCase);
+        LossResults = Results(displayRows, 1:9);
+        lossTable.Data = LossResults;
         lossTable.CellSelectionCallback = @selectLossCase;
     end
     function selectLossCase(~, event)
