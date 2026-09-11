@@ -26,6 +26,8 @@ Input.IM          = 2692;
 Input.n_nom       = 10;
 Input.TrafoP0_kW  = 5.5;
 Input.TrafoPk_kW  = 100;
+Input.k_res       = 1.1;
+Input.Cooling     = 'Water';
 
 DimResult = struct();
 DimResult.PVS  = 456;
@@ -43,6 +45,28 @@ Psh    = 703400;
 Loss = calculateLosses(Input, DimResult, Thy, Speed, uLcase, Psh);
 
 check('PV_Besch [W]', Loss.PV_Besch, 24938.55, TOL*24938.55);
+
+%% ===== Air/Water cooling split (VBA Verlustrechnung, minus the PV_3GL
+% and PV_Si terms this tool has no inputs for) =============================
+PV_Th_expected = 71300.58136268196;
+check('PV_Th [W]', Loss.PV_Th, PV_Th_expected, TOL*PV_Th_expected);
+
+% Water-cooled: PV_Luft = k_res*PV_Zus (=0 here); PV_Wasser = k_res*(PV_Th+PV_Besch)
+check('PV_Luft (Water-cooled) [W]', Loss.PV_Luft, 0, 1e-6);
+check('PV_Wasser (Water-cooled) [W]', Loss.PV_Wasser, 105863.0445, ...
+    TOL*105863.0445);
+check('PV_TotRes (Water-cooled) [W]', Loss.PV_TotRes, 105863.0445, ...
+    TOL*105863.0445);
+
+% Air-cooled: PV_Luft = k_res*(PV_Th+PV_Besch+PV_Zus); PV_Wasser = 0
+InputAir = Input;
+InputAir.Cooling = 'Air';
+LossAir = calculateLosses(InputAir, DimResult, Thy, Speed, uLcase, Psh);
+check('PV_Luft (Air-cooled) [W]', LossAir.PV_Luft, 105863.0445, ...
+    TOL*105863.0445);
+check('PV_Wasser (Air-cooled) [W]', LossAir.PV_Wasser, 0, 1e-6);
+check('PV_TotRes (Air-cooled) [W]', LossAir.PV_TotRes, 105863.0445, ...
+    TOL*105863.0445);
 
 %% ===== Per-case Psh: PmachineNominal must use the passed Psh arg,
 % not DimResult.Psh (a real bug this test would have missed if both
