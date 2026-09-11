@@ -1346,17 +1346,17 @@ uibutton(...
 coolingTable = uitable(...
     tabCooling,...
     'Units','normalized',...
-    'Position',[0.02 0.02 0.32 0.88],...
+    'Position',[0.02 0.48 0.32 0.42],...
     'ColumnName',{'Parameter','Value','Unit'});
-%% Cooling Sweep Plot
+%% Cooling Sweep Plot (Water Flow and Pressure Drop, dual axis)
 
 coolingSweepAx = uiaxes( ...
     tabCooling, ...
     'Units','normalized',...
-    'Position',[0.36 0.47 0.54 0.42]);
+    'Position',[0.36 0.48 0.30 0.42]);
 
 title(coolingSweepAx,...
-    'Cooling Flow Sweep');
+    'Water Flow and Pressure Drop');
 
 grid(coolingSweepAx,'on');
 %% Cooling Glycol Plot
@@ -1364,10 +1364,23 @@ grid(coolingSweepAx,'on');
 coolingGlycolAx = uiaxes( ...
     tabCooling, ...
     'Units','normalized',...
-    'Position',[0.36 0.02 0.54 0.37]);
+    'Position',[0.68 0.48 0.30 0.42]);
 
 title(coolingGlycolAx,...
     'Cooling Glycol Sweep');
+%% Cooling Sweep Table (Output data, per the reference workbook's
+% "Design of Water-Cooling System for Cycloconverters" layout: water
+% flow / pressure drop / required intake temperature & delta T for
+% Thyr&R and for the whole cycloconverter, one column per swept flow
+% rate, design-target column highlighted).
+
+coolingSweepTable = uitable(...
+    tabCooling,...
+    'Units','normalized',...
+    'Position',[0.02 0.02 0.96 0.44],...
+    'ColumnName',{...
+    'Parameter',...
+    '1.8','2.0','2.2','2.4','2.6','2.8','3.0','3.2'});
 
 grid(coolingGlycolAx,'on');
 %% ==========================================================
@@ -1460,6 +1473,7 @@ lossTable.ColumnWidth = 'auto';
 gridHarmonicTable.ColumnWidth = 'auto';
 gridHarmonicDetailTable.ColumnWidth = 'auto';
 gridHarmonicIOTable.ColumnWidth = 'auto';
+coolingSweepTable.ColumnWidth = 'auto';
 %% ==========================================================
 % CALLBACK
 %% ==========================================================
@@ -2169,16 +2183,99 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
             '-';
             };
     end
+    function [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+            getMaxConverterLossesForCooling()
+        %GETMAXCONVERTERLOSSESFORCOOLING  Max PV(Th)/PV(Besch)/
+        %PV(Wasser) [W] across every LossObjects entry (all operating
+        %points, both SC cases when "Include SCmax case" is on),
+        %converted to kW -- feeds the Water Cooling Design "Thy Loss"/
+        %"Resistor Loss"/"Converter Loss" inputs. Returns [] for all
+        %three if Losses hasn't been run yet. PV(Wasser) is 0 for every
+        %row unless Losses was last run with Cooling = Water
+        %(calculateLosses.m's air-cooled branch always sets it to 0),
+        %so Losses should be (re-)run with Cooling = Water immediately
+        %before Cooling design.
+        maxPVTh_kW = [];
+        maxPVBesch_kW = [];
+        maxPVWasser_kW = [];
+        if isempty(LossObjects)
+            return
+        end
+        valid = ~cellfun(@isempty, LossObjects);
+        if ~any(valid)
+            return
+        end
+        L = [LossObjects{valid}];
+        maxPVTh_kW     = max([L.PV_Th])     / 1000;
+        maxPVBesch_kW  = max([L.PV_Besch])  / 1000;
+        maxPVWasser_kW = max([L.PV_Wasser]) / 1000;
+    end
+    function maxTein_C = getMaxTeinForCooling()
+        %GETMAXTEINFORCOOLING  Max T(W,ein) [deg C] (water inlet
+        %temperature required by the thyristor/snubber thermal solve)
+        %across every Operating Point Study case (both SC cases when
+        %both have been run) -- feeds the Water Cooling Design "Taus
+        %Conv" input. Returns [] if no valid T(W,ein) is available. A
+        %Study case run with Cooling = Air has Tein = NaN
+        %(calculate_thyristor_thermal.m only computes it for Water) and
+        %is ignored here.
+        maxTein_C = [];
+        AllStudy = [OperatingPointStudySCmin, OperatingPointStudySCmax];
+        Teins = [];
+        for k = 1:numel(AllStudy)
+            R = AllStudy{k};
+            if ~isempty(R) && isfield(R,'Tein') && ~isnan(R.Tein)
+                Teins(end+1) = R.Tein; %#ok<AGROW>
+            end
+        end
+        if ~isempty(Teins)
+            maxTein_C = max(Teins);
+        end
+    end
     function runCooling(~,~)
         %RUNCOOLING
         % Water-cooling design: calculate_cyclo_water_cooling.m
         % against the workbook "Design of Water-Cooling System for
         % Cycloconverters", populate the Cooling tab (table + the
-        % two sweep plots), and feed the Design Data report cache.
+        % two sweep plots + the sweep table), and feed the Design Data
+        % report cache.
         try
             idx = find(strcmp({DB.Type},...
                 thyDropdown.Value),1);
             Thy = DB(idx);
+            % Auto-derive the Water Cooling Design loss/temperature
+            % inputs from the already-computed Losses/Operating Point
+            % results, per user direction: Thy Loss = max PV(Th),
+            % Resistor Loss = max PV(Besch), Converter Loss = max
+            % PV(Wasser) (all from calculateLosses.m, across every
+            % operating point and SC case), Taus Conv = max T(W,ein)
+            % (from the Operating Point calculation).
+            [maxPVTh_kW, maxPVBesch_kW, maxPVWasser_kW] = ...
+                getMaxConverterLossesForCooling();
+            if isempty(maxPVTh_kW)
+                uialert(fig, [ ...
+                    'Run Losses first (with Cooling = Water) -- the ', ...
+                    'Water Cooling Design inputs (Thy Loss, Resistor ', ...
+                    'Loss, Converter Loss) are derived from the ', ...
+                    'computed PV(Th)/PV(Besch)/PV(Wasser) results.'], ...
+                    'No Data');
+                return
+            end
+            maxTein_C = getMaxTeinForCooling();
+            if isempty(maxTein_C)
+                uialert(fig, [ ...
+                    'Run Operating Point first (with Cooling = Water) ', ...
+                    '-- the Water Cooling Design "Taus Conv" input is ', ...
+                    'derived from the computed T(W,ein) (water inlet ', ...
+                    'temperature) results.'], ...
+                    'No Data');
+                return
+            end
+            ThyristorCoolingLoss.Value = round(maxPVTh_kW,2);
+            ResistorCoolingLoss.Value  = round(maxPVBesch_kW,2);
+            ConverterCoolingLoss.Value = round(maxPVWasser_kW,2);
+            TausConvMax.Value          = round(maxTein_C,1);
+
             Input = buildInput(Thy);
 
             CoolingInput = struct();
@@ -2198,15 +2295,70 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
 
             populateCoolingResults(CoolingResult);
 
-            %% Flow sweep plot (Cooling design C26:J26)
+            %% Flow sweep plot (Cooling design C26:J26) -- "Water Flow
+            % and Pressure Drop": converter pressure drop (left axis)
+            % and the converter-level required intake temperature
+            % (right axis), both vs. swept water flow, per the
+            % reference workbook's chart of the same name.
             Sweep = run_cyclo_cooling_sweep(CoolingInput);
+            cla(coolingSweepAx);
+            yyaxis(coolingSweepAx,'left');
             plot(coolingSweepAx, ...
                 Sweep.QwKD_lpm, Sweep.DpConverter_kPa, ...
-                'o-','LineWidth',2);
-            xlabel(coolingSweepAx,'Q_{KD} [l/min]');
-            ylabel(coolingSweepAx,'\DeltaP_{Converter} [kPa]');
-            title(coolingSweepAx,'Cooling Flow Sweep');
+                'd-','LineWidth',2,'DisplayName','Pressure drop');
+            ylabel(coolingSweepAx,'Pressure drop [kPa]');
+            yyaxis(coolingSweepAx,'right');
+            plot(coolingSweepAx, ...
+                Sweep.QwKD_lpm, Sweep.TinConverter_C, ...
+                's-','LineWidth',2,'DisplayName','Intake temperature');
+            ylabel(coolingSweepAx,'Intake temperature [°C]');
+            xlabel(coolingSweepAx,'Water flow [l/min]');
+            title(coolingSweepAx,'Water Flow and Pressure Drop');
+            legend(coolingSweepAx,'Location','northwest');
             grid(coolingSweepAx,'on');
+
+            %% Cooling Sweep Table -- Output data (per the reference
+            % workbook layout): one column per swept flow rate, the
+            % column nearest the actual design flow (Qw [L/min],
+            % CoolingInput.QwKD_lpm) highlighted as the design target.
+            nFlow = numel(Sweep.QwKD_lpm);
+            rowLabels = {
+                'Water flow of cycloconverter [l/min]'
+                'Pressure drop of cycloconverter [kPa]'
+                ''
+                'Intake temp required Thyr&R [°C]'
+                'delta T cooling in/out [K]'
+                ''
+                'Intake temp required cycloconv. [°C]'
+                'delta T cooling in/out [K]'
+                };
+            rowData = [ ...
+                Sweep.QConverter_lpm'; ...
+                Sweep.DpConverter_kPa'; ...
+                NaN(1,nFlow); ...
+                Sweep.TinKD_C'; ...
+                Sweep.DeltaTKD_C'; ...
+                NaN(1,nFlow); ...
+                Sweep.TinConverter_C'; ...
+                Sweep.DeltaTConverter_C'];
+            nSweepRows = numel(rowLabels);
+            sweepTableData = cell(nSweepRows, 1+nFlow);
+            for r = 1:nSweepRows
+                sweepTableData{r,1} = rowLabels{r};
+                for c = 1:nFlow
+                    if isnan(rowData(r,c))
+                        sweepTableData{r,c+1} = [];
+                    else
+                        sweepTableData{r,c+1} = round(rowData(r,c),2);
+                    end
+                end
+            end
+            coolingSweepTable.Data = sweepTableData;
+            removeStyle(coolingSweepTable);
+            [~, targetCol] = min(abs(Sweep.QwKD_lpm - CoolingInput.QwKD_lpm));
+            addStyle(coolingSweepTable, ...
+                uistyle('BackgroundColor',[0.75 0.85 1]), ...
+                'column', targetCol+1);
 
             %% Glycol sweep plot
             GlycolSweep = run_cyclo_cooling_glycol_sweep(CoolingInput);
@@ -7013,6 +7165,7 @@ gridHarmonicIOTable.ColumnWidth = 'auto';
         gridHarmonicDetailTable.Data = {};
         gridHarmonicIOTable.Data = {};
         coolingTable.Data = {};
+        coolingSweepTable.Data = {};
         cla(coolingSweepAx);
         cla(coolingGlycolAx);
         DesignDataCache.Cooling = [];
