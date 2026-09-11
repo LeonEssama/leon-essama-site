@@ -2239,20 +2239,43 @@ coolingSweepTable.ColumnWidth = 'auto';
         if isempty(LossObjects)
             return
         end
-        valid = ~cellfun(@isempty, LossObjects);
-        if ~any(valid)
-            return
+        % Iterate rather than concatenate LossObjects{:} into a struct
+        % array: the RMS-row entries carry extra fields (uM, uLstar,
+        % PavgSolved, IL1ABB, IL1Netz) the Peak-row entries don't --
+        % [LossObjects{:}] errors ("Number of fields ... do not match")
+        % the moment both kinds are present, since MATLAB struct-array
+        % concatenation requires an identical field set on every
+        % element.
+        bestTh = -Inf;
+        bestBesch = -Inf;
+        bestWasser = -Inf;
+        for k = 1:numel(LossObjects)
+            L = LossObjects{k};
+            if isempty(L)
+                continue
+            end
+            if L.PV_Th > bestTh
+                bestTh = L.PV_Th;
+                srcPVTh = describeLossSource(L);
+            end
+            if L.PV_Besch > bestBesch
+                bestBesch = L.PV_Besch;
+                srcPVBesch = describeLossSource(L);
+            end
+            if L.PV_Wasser > bestWasser
+                bestWasser = L.PV_Wasser;
+                srcPVWasser = describeLossSource(L);
+            end
         end
-        L = [LossObjects{valid}];
-        [maxPVThW, iTh]         = max([L.PV_Th]);
-        [maxPVBeschW, iBesch]   = max([L.PV_Besch]);
-        [maxPVWasserW, iWasser] = max([L.PV_Wasser]);
-        maxPVTh_kW     = maxPVThW     / 1000;
-        maxPVBesch_kW  = maxPVBeschW  / 1000;
-        maxPVWasser_kW = maxPVWasserW / 1000;
-        srcPVTh     = describeLossSource(L(iTh));
-        srcPVBesch  = describeLossSource(L(iBesch));
-        srcPVWasser = describeLossSource(L(iWasser));
+        if bestTh > -Inf
+            maxPVTh_kW = bestTh / 1000;
+        end
+        if bestBesch > -Inf
+            maxPVBesch_kW = bestBesch / 1000;
+        end
+        if bestWasser > -Inf
+            maxPVWasser_kW = bestWasser / 1000;
+        end
     end
     function s = describeLossSource(L)
         %DESCRIBELOSSSOURCE  "Point / VoltageCase" label for a
