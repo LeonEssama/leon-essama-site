@@ -11,6 +11,7 @@ function B = busbar_check(Input, opts)
 %
 %   REQUIRED FIELDS OF Input
 %     IM          [A]   nominal machine current
+%     u_L         [pu]  uL,min -- minimum line voltage, undervoltage case
 %     n_nom       [rpm] nominal speed
 %     PolePairs   [-]   pole pairs
 %     fL          [Hz]  line frequency
@@ -34,9 +35,19 @@ function B = busbar_check(Input, opts)
 %     B.AllOK     logical, true when every section of both finishes passes
 %
 %   LOAD CURRENT DEFINITIONS
-%     Motor sections   I = IM                 [A]
-%     Line sections    I = IM * sqrt(2/3)     [A]
-%     Stack sections   I = IM / sqrt(3)       [A]
+%     Motor sections   I = IM/u_L                 [A]
+%     Line sections    I = IM/u_L * sqrt(2/3)     [A]
+%     Stack sections   I = IM/u_L / sqrt(3)       [A]
+%
+%     IM/u_L (u_L = uL,min) is the same undervoltage current-scaling
+%     already established in CycloGUI_v2_0/generateNetzMatrix and
+%     derive_cyclo_operating_point_voltage_current.m: at reduced line
+%     voltage the motor current rises by 1/u_L to hold shaft power
+%     roughly constant, so every busbar section (motor, line and stack)
+%     sees its worst case at uL,min, not at rated line voltage. This is
+%     not a new formula -- it reuses the tool's existing uLmin
+%     convention rather than reasoning about busbar loading in
+%     isolation.
 %
 %     The line-side factor sqrt(2/3) = 0.8165 is the converter valve-side
 %     RMS current of a 6-pulse bridge and matches R.Iv_used in calculate.m.
@@ -59,9 +70,14 @@ function B = busbar_check(Input, opts)
 %     BusbarAmpacityTable.m and busbar_k_factors.m for the full note.
 %
 %   NOT EXECUTED: statically reviewed only, no MATLAB runtime was
-%   available when this was written. Verified numerically against all 16
-%   rows of Schienenueberpruefung.xlsx (both sheets, 8 sections each);
-%   every I_max and Reserve reproduces to within 2e-6.
+%   available when this was written. The k-factor/ampacity-table machinery
+%   (unchanged by the IM/u_L current basis above) was verified numerically
+%   against all 16 rows of Schienenueberpruefung.xlsx (both sheets, 8
+%   sections each) at I = IM; every I_max and Reserve reproduced to within
+%   2e-6. The IM/u_L current basis itself is a user-directed deviation
+%   from that workbook (which used IM, not IM/uL,min) and is NOT
+%   separately re-verified against it -- I_load_A simply scales by
+%   1/Input.u_L relative to the workbook-matched values.
 
 arguments
     Input             (1,1) struct
@@ -77,7 +93,7 @@ arguments
 end
 
 %% ---------------- Input validation -------------------------------------
-required = {'IM','n_nom','PolePairs','fL'};
+required = {'IM','u_L','n_nom','PolePairs','fL'};
 missing  = required(~isfield(Input, required));
 if ~isempty(missing)
     error('busbar_check:MissingFields', ...
@@ -92,6 +108,7 @@ else
 end
 
 validateattributes(Input.IM,        {'double'}, {'scalar','positive','finite'});
+validateattributes(Input.u_L,       {'double'}, {'scalar','positive','finite'});
 validateattributes(Input.n_nom,     {'double'}, {'scalar','positive','finite'});
 validateattributes(Input.PolePairs, {'double'}, {'scalar','positive','finite'});
 validateattributes(Input.fL,        {'double'}, {'scalar','positive','finite'});
@@ -103,14 +120,19 @@ validateattributes(altitude,        {'double'}, {'scalar','nonnegative','finite'
 f_motor = Input.PolePairs * Input.n_nom / 60;
 f_line  = Input.fL;
 
-I_motor = Input.IM;
-I_line  = Input.IM * sqrt(2/3);
-I_stack = Input.IM / sqrt(3);
+% Worst-case (uL,min undervoltage) machine current: same 1/u_L scaling
+% already used for IM_op in derive_cyclo_operating_point_voltage_current.m
+% -- see LOAD CURRENT DEFINITIONS above.
+IM_used = Input.IM / Input.u_L;
+
+I_motor = IM_used;
+I_line  = IM_used * sqrt(2/3);
+I_stack = IM_used / sqrt(3);
 
 B.Currents = struct( ...
-    'I_motor_A', I_motor, 'I_motor_formula', 'IM', ...
-    'I_line_A',  I_line,  'I_line_formula',  'IM * sqrt(2/3)', ...
-    'I_stack_A', I_stack, 'I_stack_formula', 'IM / sqrt(3)', ...
+    'I_motor_A', I_motor, 'I_motor_formula', 'IM / u_L', ...
+    'I_line_A',  I_line,  'I_line_formula',  'IM / u_L * sqrt(2/3)', ...
+    'I_stack_A', I_stack, 'I_stack_formula', 'IM / u_L / sqrt(3)', ...
     'f_motor_Hz', f_motor, 'f_motor_formula', 'PolePairs * n_nom / 60', ...
     'f_line_Hz',  f_line,  'f_line_formula',  'fL');
 
