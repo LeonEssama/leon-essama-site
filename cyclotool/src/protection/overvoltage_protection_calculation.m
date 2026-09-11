@@ -185,6 +185,17 @@ O.CycloThermal_OK     = O.ITh_zul_Cyclo >= O.ILimit;
 O.CycloThermalMargin  = O.ITh_zul_Cyclo - O.ILimit;
 O.OVThyType            = CycloThy.Type;
 
+% Matched class's own thermal parameters (workbook's "V(T0)/r(T)/Rth(j-c)/
+% Rth(c-h)/Rth(h-a)/deltaTheta" input rows for the Dauergrenzstrom section),
+% exposed for display alongside O.ITh_zul_Cyclo.
+O.CycloThy_VDRM       = CycloThy.VDRM;
+O.CycloThy_VT0        = CycloThy.VT0;
+O.CycloThy_rT         = CycloThy.rT;
+O.CycloThy_Rth_jc     = CycloThy.Rth_jc;
+O.CycloThy_Rth_ch     = CycloThy.Rth_ch;
+O.CycloThy_Rth_ha     = CycloThy.Rth_ha;
+O.CycloThy_DeltaTheta = CycloThy.DeltaTheta;
+
 end
 
 %% ==========================================================

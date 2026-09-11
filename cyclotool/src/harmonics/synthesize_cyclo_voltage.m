@@ -363,135 +363,90 @@ for intervalNumber = 1:numberOfIntervals
                 2);
 
         %% -------------------------------------------------
-        % Local group voltage contribution
+        % Local group voltage contribution (vectorized across samples)
         %% -------------------------------------------------
+        %
+        % Equivalent to the original per-sample loop: delayU/V/W are
+        % per-interval scalars, so the delayed index and the gathered
+        % source-voltage sample are computed for every localSample at
+        % once via linear indexing, instead of one MATLAB loop
+        % iteration per sample. Same formulas, same results, but this
+        % was previously the simulation's dominant cost at low motor
+        % frequency (samplesPerInterval x numberOfIntervals x TC scalar
+        % iterations, e.g. millions of iterations at Creeping speed).
 
-        groupU = zeros(samplesPerInterval,1);
-        groupV = zeros(samplesPerInterval,1);
-        groupW = zeros(samplesPerInterval,1);
+        localSample = (1:samplesPerInterval)';
+
+        delayedIndexU = localSample + delayU;
+        delayedIndexV = localSample + delayV;
+        delayedIndexW = localSample + delayW;
+
+        sourceRows = size(sourceVoltage, 1);
+
+        positiveU = ...
+            sourceVoltage(delayedIndexU + (positivePhase-1)*sourceRows) ...
+            - P.UT0;
+        positiveV = ...
+            sourceVoltage(delayedIndexV + (positivePhase-1)*sourceRows) ...
+            - P.UT0;
+        positiveW = ...
+            sourceVoltage(delayedIndexW + (positivePhase-1)*sourceRows) ...
+            - P.UT0;
+
+        negativeU = ...
+            sourceVoltage(delayedIndexU + (negativePhase-1)*sourceRows) ...
+            + P.UT0;
+        negativeV = ...
+            sourceVoltage(delayedIndexV + (negativePhase-1)*sourceRows) ...
+            + P.UT0;
+        negativeW = ...
+            sourceVoltage(delayedIndexW + (negativePhase-1)*sourceRows) ...
+            + P.UT0;
+
+        groupU = positiveU - negativeU;
+        groupV = positiveV - negativeV;
+        groupW = positiveW - negativeW;
 
         %% -------------------------------------------------
-        % Sample loop
+        % Store natural source-phase selections (vectorized)
         %% -------------------------------------------------
+        %
+        % The validated ABB-compatible voltage model determines one
+        % natural positive source phase and one natural negative
+        % source phase per sample and converter group.
+        %
+        % The same selections are repeated across U, V, and W to
+        % preserve the existing four-dimensional interface.
+        %
+        % These arrays must not be interpreted as independent
+        % physical gate, thyristor-latching, or commutation states.
+        %
+        % State.positive/negative are [totalSamples x 3 x numberOfGroups
+        % x 3] logical arrays; linear indices below follow MATLAB's
+        % column-major convention for that shape, one outputPhase at a
+        % time (only 3 iterations, not one per sample).
 
-        for localSample = 1:samplesPerInterval
-            %% -------------------------------------------------
-            % Global sample
-            %% -------------------------------------------------
-            globalSample = ...
-                globalIndex(localSample);
-            %% -------------------------------------------------
-            % Natural conducting source phases
-            %% -------------------------------------------------
-            
-            selectedPositivePhase = ...
-                positivePhase(localSample);
-            
-            selectedNegativePhase = ...
-                negativePhase(localSample);
-            
-            %% -------------------------------------------------
-            % Phase-specific delayed indices
-            %% -------------------------------------------------
-            
-            delayedIndexU = ...
-                localSample + delayU;
-            
-            delayedIndexV = ...
-                localSample + delayV;
-            
-            delayedIndexW = ...
-                localSample + delayW;
-            
-            %% -------------------------------------------------
-            % Positive bridge voltage values
-            %% -------------------------------------------------
-            
-            positiveU = ...
-                sourceVoltage( ...
-                    delayedIndexU, ...
-                    selectedPositivePhase) ...
-                - P.UT0;
-            
-            positiveV = ...
-                sourceVoltage( ...
-                    delayedIndexV, ...
-                    selectedPositivePhase) ...
-                - P.UT0;
-            
-            positiveW = ...
-                sourceVoltage( ...
-                    delayedIndexW, ...
-                    selectedPositivePhase) ...
-                - P.UT0;
-            
-            %% -------------------------------------------------
-            % Negative bridge voltage values
-            %% -------------------------------------------------
-            
-            negativeU = ...
-                sourceVoltage( ...
-                    delayedIndexU, ...
-                    selectedNegativePhase) ...
-                + P.UT0;
-            
-            negativeV = ...
-                sourceVoltage( ...
-                    delayedIndexV, ...
-                    selectedNegativePhase) ...
-                + P.UT0;
-            
-            negativeW = ...
-                sourceVoltage( ...
-                    delayedIndexW, ...
-                    selectedNegativePhase) ...
-                + P.UT0;
-            
-            %% -------------------------------------------------
-            % Group output-voltage contribution
-            %% -------------------------------------------------
-            
-            groupU(localSample) = ...
-                positiveU ...
-                - negativeU;
-            
-            groupV(localSample) = ...
-                positiveV ...
-                - negativeV;
-            
-            groupW(localSample) = ...
-                positiveW ...
-                - negativeW;
-            
-            %% -------------------------------------------------
-            % Store natural source-phase selections
-            %% -------------------------------------------------
-            %
-            % The validated ABB-compatible voltage model determines one
-            % natural positive source phase and one natural negative
-            % source phase per sample and converter group.
-            %
-            % The same selections are repeated across U, V, and W to
-            % preserve the existing four-dimensional interface.
-            %
-            % These arrays must not be interpreted as independent
-            % physical gate, thyristor-latching, or commutation states.
-            
-            for outputPhase = 1:3
-            
-                State.positive( ...
-                    globalSample, ...
-                    selectedPositivePhase, ...
-                    groupNumber, ...
-                    outputPhase) = true;
-            
-                State.negative( ...
-                    globalSample, ...
-                    selectedNegativePhase, ...
-                    groupNumber, ...
-                    outputPhase) = true;
-            
-            end
+        globalSampleColumn = globalIndex(:);
+        stateDim1 = totalSamples;
+        stateDim2 = 3;
+        stateDim3 = numberOfGroups;
+
+        for outputPhase = 1:3
+
+            positiveLinearIndex = ...
+                globalSampleColumn ...
+                + (positivePhase-1)*stateDim1 ...
+                + (groupNumber-1)*stateDim1*stateDim2 ...
+                + (outputPhase-1)*stateDim1*stateDim2*stateDim3;
+
+            negativeLinearIndex = ...
+                globalSampleColumn ...
+                + (negativePhase-1)*stateDim1 ...
+                + (groupNumber-1)*stateDim1*stateDim2 ...
+                + (outputPhase-1)*stateDim1*stateDim2*stateDim3;
+
+            State.positive(positiveLinearIndex) = true;
+            State.negative(negativeLinearIndex) = true;
 
         end
 
