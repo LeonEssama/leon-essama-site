@@ -24,7 +24,9 @@ fprintf('--- busbar_check regression test ---\n');
 
 %% ===== Case 1: sheet 'blanke Schienen' (bare) ==========================
 % IM = 2720 A, f_motor = 7 Hz, altitude 930 m (below 1000 m -> k5 = 1)
-In1 = struct('IM', 2720, 'n_nom', 14, 'PolePairs', 30, ...
+% u_L = 1 (no undervoltage scaling) so I_load_A = IM, reproducing the
+% workbook exactly -- see Case 6 for the IM/u_L behaviour itself.
+In1 = struct('IM', 2720, 'u_L', 1, 'n_nom', 14, 'PolePairs', 30, ...
              'fL', 50, 'Altitude', 930);
 % f_motor = 30 * 14 / 60 = 7.00 Hz, matching workbook cell C14
 
@@ -47,8 +49,9 @@ fprintf('  PASS  case 1 bands, frequency and pass/fail flags\n');
 %% ===== Case 2: sheet 'gestrichene Schienen' (painted) ==================
 % IM = 2555.5556 A, f_motor = 6 Hz, altitude 4400 m with the workbook's
 % k5 = 0.86 supplied as an explicit override (Tab. 13-14 stops at 4000 m).
-In2 = struct('IM', 2555.5555555555557, 'n_nom', 12, 'PolePairs', 30, ...
-             'fL', 50, 'Altitude', 4400);
+% u_L = 1, same reasoning as Case 1.
+In2 = struct('IM', 2555.5555555555557, 'u_L', 1, 'n_nom', 12, ...
+             'PolePairs', 30, 'fL', 50, 'Altitude', 4400);
 % f_motor = 30 * 12 / 60 = 6.00 Hz, matching workbook cell C14
 
 % busbar_check warns that one section fails bare but passes painted. That
@@ -156,6 +159,42 @@ motorRows = B5.Bare.f_Hz == 18;
 assert(all(B5.Bare.Band(motorRows) == "> 20 Hz (gap)"), ...
     'Conservative rule should select the lower (> 20 Hz) rating.');
 fprintf('  PASS  16..20 Hz gap: errors on demand, else takes the lower rating\n');
+
+%% ===== Case 6: IM/u_L undervoltage current basis =======================
+% Busbars must be sized for the worst case, which is the uL,min
+% undervoltage operating point (motor current rises by 1/u_L to hold
+% shaft power roughly constant -- same convention as
+% derive_cyclo_operating_point_voltage_current.m). Re-running Case 1's
+% inputs at u_L = 0.90 must scale I_load_A by 1/0.90 and Reserve_pu by
+% 0.90 relative to the u_L = 1 result, with I_max_A (a property of the
+% busbar, not the load) unchanged.
+In6 = In1;
+In6.u_L = 0.90;
+B6 = busbar_check(In6, 'Location', 'indoor');
+
+check('IM/u_L: I_motor_A', B6.Currents.I_motor_A, 2720/0.90, TOL);
+check('IM/u_L: I_line_A',  B6.Currents.I_line_A,  2720/0.90*sqrt(2/3), TOL);
+check('IM/u_L: I_stack_A', B6.Currents.I_stack_A, 2720/0.90/sqrt(3), TOL);
+
+check('IM/u_L: bare I_load_A scales by 1/u_L', ...
+    B6.Bare.I_load_A, B1.Bare.I_load_A / 0.90, TOL);
+check('IM/u_L: bare I_max_A unchanged (busbar property, not load)', ...
+    B6.Bare.I_max_A, B1.Bare.I_max_A, TOL);
+check('IM/u_L: bare Reserve_pu scales by u_L', ...
+    B6.Bare.Reserve_pu, B1.Bare.Reserve_pu * 0.90, TOL);
+fprintf('  PASS  case 6: IM/u_L undervoltage current basis\n');
+
+%% ===== Case 7: u_L is a required field ==================================
+In7 = rmfield(In1, 'u_L');
+try
+    busbar_check(In7);
+    error('test_busbar_check:NoMissingFieldError', ...
+        'busbar_check should refuse to run without Input.u_L.');
+catch err
+    assert(strcmp(err.identifier, 'busbar_check:MissingFields'), ...
+        'Expected busbar_check:MissingFields, got %s.', err.identifier);
+end
+fprintf('  PASS  case 7: u_L is enforced as a required field\n');
 
 fprintf('--- all checks passed ---\n');
 

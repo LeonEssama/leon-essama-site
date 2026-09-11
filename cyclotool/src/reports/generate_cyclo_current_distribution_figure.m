@@ -12,29 +12,31 @@ function [figPath, fig] = generate_cyclo_current_distribution_figure(Input, outp
 %   Draws the current distribution through one 12-pulse converter phase
 %   group. THE TOPOLOGY IS FIXED: the arrangement of thyristors, nodes and
 %   wires never changes. Only the five current labels are computed, from
-%   Input.IM. Pass outputFolder to export a PNG and close the figure,
-%   matching the other generate_cyclo_*_figure functions; omit it (or pass
-%   "") to leave the figure open.
+%   Input.IM/Input.u_L. Pass outputFolder to export a PNG and close the
+%   figure, matching the other generate_cyclo_*_figure functions; omit it
+%   (or pass "") to leave the figure open.
 %
 %   Intended to sit beside the busbar layout drawing (Schienenplan) in the
 %   design report: the same three currents drive busbar_check, so the two
 %   pages are guaranteed consistent.
 %
-%   CURRENT LADDER (all derived from the nominal machine current IM)
+%   CURRENT LADDER (all derived from IM/u_L, u_L = uL,min -- the same
+%   undervoltage current basis busbar_check.m uses, since this drawing
+%   exists specifically to stay consistent with it)
 %
-%     I_M      = IM                 = 1.0000 * IM   [A]  motor phase
-%     I_line   = IM * sqrt(2/3)     = 0.8165 * IM   [A]  valve-side line
-%     I_branch = IM / sqrt(3)       = 0.5774 * IM   [A]  bridge branch
-%     I_outer  = IM / sqrt(6)       = 0.4082 * IM   [A]  outer branch
+%     I_M      = IM/u_L                 = 1.0000 * IM/u_L   [A]  motor phase
+%     I_line   = IM/u_L * sqrt(2/3)     = 0.8165 * IM/u_L   [A]  valve-side line
+%     I_branch = IM/u_L / sqrt(3)       = 0.5774 * IM/u_L   [A]  bridge branch
+%     I_outer  = IM/u_L / sqrt(6)       = 0.4082 * IM/u_L   [A]  outer branch
 %
-%   These reproduce the reference drawing at IM = 2380 A as 2380 / 1943 /
-%   1374 / 972 A, and the node balances close:
-%       sqrt(I_line^2 + I_branch^2) = IM
-%       sqrt(I_outer^2 + I_branch^2) = IM / sqrt(2)
+%   At u_L = 1 these reproduce the reference drawing at IM = 2380 A as
+%   2380 / 1943 / 1374 / 972 A, and the node balances close:
+%       sqrt(I_line^2 + I_branch^2) = IM/u_L
+%       sqrt(I_outer^2 + I_branch^2) = IM/u_L / sqrt(2)
 %
-%   I_line is R.Iv_used in calculate.m. I_branch is the current used for
-%   the 'Stapelverschienung' and 'Wandlerverschienung' sections in
-%   busbar_check.m, and is confirmed by the reference drawing.
+%   I_line is R.Iv_used in calculate.m, scaled by 1/u_L. I_branch is the
+%   current used for the 'Stapelverschienung' and 'Wandlerverschienung'
+%   sections in busbar_check.m, and is confirmed by the reference drawing.
 %
 %   STANDARDS
 %     No IEC/IEEE requirement found for this item. The factors follow from
@@ -60,10 +62,18 @@ if ~isfield(Input, 'IM')
     error('generate_cyclo_current_distribution_figure:MissingIM', ...
         'Input.IM (nominal machine current [A]) is required.');
 end
+if ~isfield(Input, 'u_L')
+    error('generate_cyclo_current_distribution_figure:MissingUL', ...
+        'Input.u_L (uL,min [pu]) is required.');
+end
 validateattributes(Input.IM, {'double'}, {'scalar','positive','finite'}, ...
     mfilename, 'Input.IM');
+validateattributes(Input.u_L, {'double'}, {'scalar','positive','finite'}, ...
+    mfilename, 'Input.u_L');
 
-IM = Input.IM;
+% Worst-case (uL,min undervoltage) machine current -- see busbar_check.m,
+% whose I_motor/I_line/I_stack this drawing must stay consistent with.
+IM = Input.IM / Input.u_L;
 
 %% ---------------- Current ladder ---------------------------------------
 I_M      = IM;                 % motor phase        [A]
