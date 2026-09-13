@@ -225,6 +225,15 @@ H.setSettings = @setSettings;
         if ~isempty(warnMsg)
             msg = [msg '  |  ' warnMsg];
         end
+        % B.PaintRequiredNote (not warnMsg/lastwarn) is where the "fails
+        % bare, passes painted" advisory now comes from: busbar_check.m
+        % returns it as a field instead of raising it via warning(), so
+        % it no longer prints to the Command Window every time this runs
+        % (including every Dimensioning auto-refresh) -- see busbar_
+        % check.m's ADVISORY section.
+        if ~isempty(B.PaintRequiredNote)
+            msg = [msg '  |  ' B.PaintRequiredNote];
+        end
         setStatus(msg, col);
     end
 
@@ -388,7 +397,8 @@ H.setSettings = @setSettings;
         problem = '';
 
         needTop = {'Summary','Bare','Painted','Currents','Sources', ...
-                   'Threshold','Altitude_m','Location','AllOK'};
+                   'Threshold','Altitude_m','Location','AllOK', ...
+                   'PaintRequired','PaintRequiredNote'};
         missing = needTop(~isfield(B, needTop));
         if ~isempty(missing)
             problem = sprintf(['busbar_check.m is out of date: result is ' ...

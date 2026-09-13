@@ -33,6 +33,14 @@ function B = busbar_check(Input, opts)
 %     B.Altitude_m, B.Location   site conditions actually used for k5
 %     B.Sources   cell,  provenance of every k factor, per section
 %     B.AllOK     logical, true when every section of both finishes passes
+%     B.PaintRequired      logical, true when every section passes
+%                          painted but at least one fails bare
+%     B.PaintRequiredNote  char, human-readable advisory for the above
+%                          ('' when B.PaintRequired is false). Returned
+%                          as a field, not raised via warning(), so a
+%                          caller that re-runs this in a loop (e.g. the
+%                          GUI's auto-refresh on every Dimensioning run)
+%                          does not spam the Command Window.
 %
 %   LOAD CURRENT DEFINITIONS
 %     Motor sections   I = IM/u_L                 [A]
@@ -176,11 +184,23 @@ B.Location   = opts.Location;
 B.AllOK      = all(B.Bare.OK) && all(B.Painted.OK);
 
 %% ---------------- Advisory ---------------------------------------------
-if ~all(B.Bare.OK) && all(B.Painted.OK)
-    warning('busbar_check:PaintRequired', ...
+% Returned as a field rather than raised via warning(): a caller that
+% runs busbar_check.m repeatedly in a loop (build_busbar_tab.m calls it
+% from runDimensioning's auto-refresh on every Dimensioning run) would
+% otherwise print this to the Command Window every time. build_busbar_
+% tab.m already reports B.AllOK-derived pass/fail in its own status
+% line; PaintRequiredNote is this same fact's human-readable form for
+% callers that want it, GUI or scripted, without depending on the
+% console or on lastwarn() (which only holds the MOST RECENT warning --
+% see tests/test_busbar_check.m's note on why that was already fragile).
+B.PaintRequired = ~all(B.Bare.OK) && all(B.Painted.OK);
+if B.PaintRequired
+    B.PaintRequiredNote = sprintf( ...
         ['%d section(s) fail bare but pass painted. Painting the bars ' ...
          'is then a design requirement, not an option.'], ...
         sum(~B.Bare.OK));
+else
+    B.PaintRequiredNote = '';
 end
 
 end
