@@ -1,4 +1,4 @@
-"""Busbar Check API: /api/busbar/check and /api/busbar/check/report.pdf."""
+"""Busbar Check API: /api/busbar/check and /api/busbar/check/report.docx."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from app.models.busbar import (
     CurrentsOut,
     SectionResultOut,
 )
-from app.reports.busbar_report import render_busbar_report_pdf
+from app.reports.busbar_report import render_busbar_report_docx
 
 router = APIRouter(prefix="/api/busbar", tags=["busbar"])
 
@@ -123,14 +123,14 @@ def check(req: BusbarCheckRequest) -> BusbarCheckResponse:
     return _to_response(_run_check(req))
 
 
-@router.post("/check/report.pdf")
-def check_report_pdf(req: BusbarCheckRequest) -> Response:
+@router.post("/check/report.docx")
+def check_report_docx(req: BusbarCheckRequest) -> Response:
     result = _run_check(req)
-    pdf_bytes = render_busbar_report_pdf(result)
+    docx_bytes = render_busbar_report_docx(result)
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": 'attachment; filename="thermal_busbar_design.pdf"'
+            "Content-Disposition": 'attachment; filename="thermal_busbar_design.docx"'
         },
     )

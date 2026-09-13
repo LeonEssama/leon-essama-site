@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, NavLink } from "react-router-dom";
 import Home from "./pages/Home";
 import BusbarCheck from "./pages/BusbarCheck";
+import EngineeringData from "./pages/EngineeringData";
 import Placeholder from "./pages/Placeholder";
 
 const PLANNED_MODULES = [
@@ -12,7 +13,7 @@ const PLANNED_MODULES = [
   "Cooling",
   "Detailed Simulation",
   "Design Data Report",
-  "Engineering Data Report",
+  "Water Cooling Report",
 ];
 
 export default function App() {
@@ -35,6 +36,9 @@ export default function App() {
             <NavLink to="/busbar" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
               Busbar Check
             </NavLink>
+            <NavLink to="/engineering-data" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+              Engineering Data
+            </NavLink>
           </div>
 
           <div className="nav-group">
@@ -55,6 +59,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/busbar" element={<BusbarCheck />} />
+            <Route path="/engineering-data" element={<EngineeringData />} />
             <Route
               path="/planned/:name"
               element={<PlaceholderRoute />}

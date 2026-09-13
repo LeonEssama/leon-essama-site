@@ -3,7 +3,7 @@ import {
   BusbarCheckRequest,
   BusbarCheckResponse,
   SectionResultOut,
-  downloadBusbarReportPdf,
+  downloadBusbarReportDocx,
   runBusbarCheck,
 } from "../api/busbar";
 
@@ -90,15 +90,15 @@ export default function BusbarCheck() {
     }
   }
 
-  async function handleDownloadPdf() {
+  async function handleDownloadDocx() {
     setDownloading(true);
     setError(null);
     try {
-      const blob = await downloadBusbarReportPdf(form);
+      const blob = await downloadBusbarReportDocx(form);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "thermal_busbar_design.pdf";
+      a.download = "thermal_busbar_design.docx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -203,10 +203,10 @@ export default function BusbarCheck() {
           </button>
           <button
             className="secondary"
-            onClick={handleDownloadPdf}
+            onClick={handleDownloadDocx}
             disabled={downloading}
           >
-            {downloading ? "Generating..." : "Download PDF Report"}
+            {downloading ? "Generating..." : "Download Word Report"}
           </button>
         </div>
       </div>

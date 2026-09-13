@@ -91,10 +91,10 @@ export async function runBusbarCheck(
   return res.json();
 }
 
-export async function downloadBusbarReportPdf(
+export async function downloadBusbarReportDocx(
   req: BusbarCheckRequest,
 ): Promise<Blob> {
-  const res = await fetch("/api/busbar/check/report.pdf", {
+  const res = await fetch("/api/busbar/check/report.docx", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),

@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.busbar import router as busbar_router
+from app.api.engineering_data import router as engineering_data_router
 
 app = FastAPI(
     title="CycloTool API",
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(busbar_router)
+app.include_router(engineering_data_router)
 
 
 @app.get("/api/health")
